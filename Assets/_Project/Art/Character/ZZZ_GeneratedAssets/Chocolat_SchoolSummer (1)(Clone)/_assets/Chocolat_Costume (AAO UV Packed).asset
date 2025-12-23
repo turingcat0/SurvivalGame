@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!28 &-4386443156599610279
+Texture2D:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Chocolat_Costume (AAO UV Packed)
+  m_ImageContentsHash:
+    serializedVersion: 2
+    Hash: 00000000000000000000000000000000
+  m_IsAlphaChannelOptional: 0
+  serializedVersion: 4
+  m_Width: 16
+  m_Height: 32
+  m_CompleteImageSize: 360
+  m_MipsStripped: 0
+  m_TextureFormat: 10
+  m_MipCount: 6
+  m_IsReadable: 0
+  m_IsPreProcessed: 0
+  m_IgnoreMipmapLimit: 0
+  m_MipmapLimitGroupName: 
+  m_StreamingMipmaps: 0
+  m_StreamingMipmapsPriority: 0
+  m_VTOnly: 0
+  m_AlphaIsTransparency: 0
+  m_ImageCount: 1
+  m_TextureDimension: 2
+  m_TextureSettings:
+    serializedVersion: 2
+    m_FilterMode: 1
+    m_Aniso: 1
+    m_MipBias: 0
+    m_WrapU: 0
+    m_WrapV: 0
+    m_WrapW: 0
+  m_LightmapFormat: 0
+  m_ColorSpace: 1
+  m_PlatformBlob: 
+  image data: 360
+  _typelessdata: b07b8831f7f709ad8b5a8839b50beffcd49c8839dfebc9cfb07b8831f7f709adcc5a0a4a57f7dc5ccc5aa83992d292da2a4a4731c85e7ce6cc5a0a4a57f7dc5c2d63ea49f6f476a8d07ba8395f5fdf1e73948831d5d5be0000000000aaaaaaaab07b8831f7f709ad8b5a8839b50beffccc5aa83992d292da2a4a4731c85e7ce6cc5a0a4a57f7dc5ccc5aa83992d292dad07ba8395f5fdf1e73948831d5d5be00d07ba8395f5fdf1e73948831d5d5be0000000000aaaaaaaa00000000aaaaaaaa00000000aaaaaaaa00000000aaaaaaaa00000000aaaaaaaa00000000aaaaaaaa00000000aaaaaaaa00000000aaaaaaaa00000000aaaaaaaa00000000aaaaaaaa2e6be941dd517f7f8f73a839da32f5f50d63a8396aaadff3707321085b50eafab07b8831ffffd70f907b0000be0a555500000000aaaaaaaa00000000aaaaaaaaed6242088aaa4aaacd5a00002a5255552a4a0000008888550a4ae4200055005567318731aaaaaaaa
+  m_StreamData:
+    serializedVersion: 2
+    offset: 0
+    size: 0
+    path: 
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4ee4713ac71e4f8a911a54de59b4829d, type: 3}
+  m_Name: Chocolat_Costume (AAO UV Packed)
+  m_EditorClassIdentifier: 
