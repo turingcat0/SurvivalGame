@@ -3,19 +3,24 @@ Shader "TuringCat/Branch"
     Properties
     {
         [MainTexture] _BaseMap("Base Map", 2D) = "black"
-        _NormalMap("Normal Map", 2D) = "black"
+        _NormalMap("Normal Map", 2D) = "bump"
+
     }
 
     SubShader
     {
         Tags
         {
-            "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline"
+            "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "LightMode" = "UniversalForward"
         }
 
         Pass
         {
             HLSLPROGRAM
+            #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
+            #pragma multi_compile _ _ADDITIONAL_LIGHTS
+            #pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
+
             #pragma vertex vert
             #pragma fragment frag
 
@@ -63,9 +68,9 @@ Shader "TuringCat/Branch"
                 OUT.normalUV = TRANSFORM_TEX(IN.uv, _NormalMap);
 
                 VertexNormalInputs normalInputs = GetVertexNormalInputs(IN.normalOS, IN.tangentOS);
-                OUT.tbn0 = normalInputs.normalWS;
-                OUT.tbn1 = normalInputs.tangentWS;
-                OUT.tbn2 = normalInputs.bitangentWS;
+                OUT.tbn0 = normalInputs.tangentWS;
+                OUT.tbn1 = normalInputs.bitangentWS;
+                OUT.tbn2 = normalInputs.normalWS;
 
                 return OUT;
             }
@@ -78,13 +83,31 @@ Shader "TuringCat/Branch"
                 half3 wNormal = TransformTangentToWorld(tNormal, half3x3(IN.tbn0, IN.tbn1, IN.tbn2), true);
 
                 // Lighting
-                TransformWorldToShadowCoord()
-                Light mainLight = GetMainLight();
+                // Main Light
+                float4 shadowCoord = TransformWorldToShadowCoord(IN.positionWS);
+                Light mainLight = GetMainLight(shadowCoord);
                 half3 l = normalize(mainLight.direction);
+                half4 finalCol = 0;
+
+                // diffuse
                 half3 ndl = saturate(dot(wNormal, l));
+                finalCol.xyz += color * ndl * mainLight.color * mainLight.shadowAttenuation;
 
 
-                return color;
+                //Additional Light
+                int addCount = GetAdditionalLightsCount();
+                for (int i = 0; i < addCount; ++i)
+                {
+                    Light addLight = GetAdditionalLight(i, IN.positionWS);
+                    half3 addLightDir = normalize(addLight.direction);
+                    half3 addNdL = saturate(dot(addLightDir, wNormal));
+
+                    finalCol.xyz += color * addNdL * addLight.color * addLight.distanceAttenuation * addLight.shadowAttenuation;
+                }
+
+
+                finalCol.a = 1;
+                return finalCol;
             }
             ENDHLSL
         }
