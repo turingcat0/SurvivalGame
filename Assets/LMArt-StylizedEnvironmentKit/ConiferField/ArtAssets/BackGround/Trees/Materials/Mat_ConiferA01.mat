@@ -8,15 +8,13 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Mat_ConiferA01
-  m_Shader: {fileID: 4800000, guid: 99134b1f0c27d54469a840832a28fadf, type: 3}
+  m_Shader: {fileID: -6465566751694194690, guid: 9920c1f1781549a46ba081a2a15a16ec, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
-  - EFFECT_BUMP
-  - EFFECT_HUE_VARIATION
-  - _WINDQUALITY_NONE
-  m_InvalidKeywords:
-  - GEOM_TYPE_MESH
+  - BACKFACE_NORMAL_MODE_MIRROR
+  - _WINDQUALITY_BEST
+  m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 1
   m_DoubleSidedGI: 0
@@ -153,7 +151,9 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - BACKFACE_NORMAL_MODE: 1
     - Backface_Normal_Mode: 0
+    - EFFECT_BILLBOARD: 0
     - EFFECT_EXTRA_TEX: 1
     - _AO: 2.4
     - _AlphaClipThreshold: 0.1
@@ -188,17 +188,18 @@ Material:
     - _NormalScale: 1
     - _Occlusion: 7.5
     - _OcclusionStrength: 1
+    - _OldHueVarBehavior: 0
     - _Parallax: 0.02
     - _Power: 2
     - _QueueControl: 0
     - _QueueOffset: 0
     - _Scale: 1
     - _ShadowAttenuation: 1
-    - _ShadowIntensity: 1
-    - _Shininess: 48
+    - _ShadowIntensity: 0.2
+    - _Shininess: 11
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
-    - _SpecularPower: 0.47
+    - _SpecularPower: 1.77
     - _SquashAmount: 1
     - _SrcBlend: 1
     - _SubsurfaceIndirect: 0.25
@@ -206,13 +207,14 @@ Material:
     - _TopBumpScale: 1
     - _TopUVScale: 0.5
     - _TopWorldUV: 0
-    - _TransArea: 0.47
-    - _TransPower: 1
+    - _TransArea: 0.298
+    - _TransPower: 0.714
     - _TransScale: 1
     - _TwoSided: 0
     - _UVSec: 0
-    - _UseAnimation: 1
+    - _UseAnimation: 0
     - _UseSpecular: 1
+    - _WINDQUALITY: 4
     - _WIND_BRANCH1: 0
     - _WIND_BRANCH2: 0
     - _WIND_RIPPLE: 0
@@ -231,7 +233,7 @@ Material:
     - _SpecularColor: {r: 1, g: 1, b: 1, a: 1}
     - _SubColor: {r: 1, g: 1, b: 1, a: 1}
     - _SubsurfaceColor: {r: 1, g: 1, b: 1, a: 1}
-    - _TransColor: {r: 0.7735849, g: 0.7735849, b: 0.7735849, a: 1}
+    - _TransColor: {r: 0.15076533, g: 0.48427665, b: 0.17966373, a: 1}
     - _TreeInstanceColor: {r: 1, g: 1, b: 1, a: 1}
     - _TreeInstanceScale: {r: 1, g: 1, b: 1, a: 1}
   m_BuildTextureStacks: []
