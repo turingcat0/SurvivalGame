@@ -11,11 +11,15 @@ Shader "TuringCat/Branch"
     {
         Tags
         {
-            "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "LightMode" = "UniversalForward"
+            "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline"
         }
 
         Pass
         {
+            Tags
+            {
+                "LightMode" = "UniversalForward"
+            }
             HLSLPROGRAM
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
             #pragma multi_compile _ _ADDITIONAL_LIGHTS
@@ -102,12 +106,79 @@ Shader "TuringCat/Branch"
                     half3 addLightDir = normalize(addLight.direction);
                     half3 addNdL = saturate(dot(addLightDir, wNormal));
 
-                    finalCol.xyz += color * addNdL * addLight.color * addLight.distanceAttenuation * addLight.shadowAttenuation;
+                    finalCol.xyz += color * addNdL * addLight.color * addLight.distanceAttenuation * addLight.
+                        shadowAttenuation;
                 }
+
+                // Ambient Light
+                half3 sh = SampleSH(wNormal);
+                finalCol.xyz += sh * color.xyz;
 
 
                 finalCol.a = 1;
                 return finalCol;
+            }
+            ENDHLSL
+        }
+        Pass
+        {
+            Name "ShadowCaster"
+            Tags
+            {
+                "LightMode" = "ShadowCaster"
+            }
+            ZWrite On
+            ZTest LEqual
+            Cull Back
+
+
+            HLSLPROGRAM
+            #pragma vertex shadowVert
+            #pragma fragment shadowFrag
+            #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
+            #pragma multi_compile_instancing
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+
+            float3 _LightDirection;
+            float3 _LightPosition;
+
+            struct Attributes
+            {
+                float4 posOS : POSITION;
+                float3 normalOS : NORMAL;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct Varings
+            {
+                float4 clipPos : SV_POSITION;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+                UNITY_VERTEX_OUTPUT_STEREO
+            };
+
+            Varings shadowVert(Attributes attr)
+            {
+                Varings OUT;
+                UNITY_SETUP_INSTANCE_ID(attr);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
+
+                float3 worldPos = TransformObjectToWorld(attr.posOS);
+                float3 worldNormal = TransformObjectToWorldNormal(attr.normalOS);
+                float3 biasedPos = ApplyShadowBias(worldPos, worldNormal, _LightDirection);
+                OUT.clipPos = TransformWorldToHClip(biasedPos);
+
+                #if UNITY_REVERSED_Z
+                OUT.clipPos.z = min(OUT.clipPos.z, OUT.clipPos.w * UNITY_NEAR_CLIP_VALUE);
+                #else
+                OUT.clipPos.z = max(OUT.clipPos.z, OUT.clipPos.w * UNITY_NEAR_CLIP_VALUE);
+                #endif
+                return OUT;
+            }
+
+            half4 shadowFrag(Varings varings) : SV_TARGET
+            {
+                return 0;
             }
             ENDHLSL
         }
