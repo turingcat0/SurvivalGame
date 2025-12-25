@@ -788,6 +788,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   cameraTransform: {fileID: 330585546}
+  cameraTarget: {fileID: 0}
   animator: {fileID: 392269113}
   walkSpeed: 2
   runSpeed: 4

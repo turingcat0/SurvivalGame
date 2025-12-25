@@ -1,9 +1,11 @@
-Shader "Custom/TreeLeavesShader"
+Shader "TuringCat/Leaf"
 {
     Properties
     {
-        [MainColor] _BaseColor("Base Color", Color) = (1, 1, 1, 1)
-        [MainTexture] _BaseMap("Base Map", 2D) = "white"
+        [MainTexture] _BaseMap("Base Map", 2D) = "black"
+        _NormalMap("Normal Map", 2D) = "bump"
+        _CutOff("CutOff", Float) = 0.5
+
     }
 
     SubShader
@@ -19,6 +21,8 @@ Shader "Custom/TreeLeavesShader"
             {
                 "LightMode" = "UniversalForward"
             }
+            Cull Off
+
             HLSLPROGRAM
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
             #pragma multi_compile _ _ADDITIONAL_LIGHTS
@@ -59,6 +63,7 @@ Shader "Custom/TreeLeavesShader"
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseMap_ST;
                 float4 _NormalMap_ST;
+                float _CutOff;
             CBUFFER_END
 
             Varyings vert(Attributes IN)
@@ -81,6 +86,8 @@ Shader "Custom/TreeLeavesShader"
             half4 frag(Varyings IN) : SV_Target
             {
                 half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
+                clip(color.a - _CutOff);
+
                 half4 nTex = SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, IN.normalUV);
                 half3 tNormal = UnpackNormal(nTex);
                 half3 wNormal = TransformTangentToWorld(tNormal, half3x3(IN.tbn0, IN.tbn1, IN.tbn2), true);
@@ -93,8 +100,8 @@ Shader "Custom/TreeLeavesShader"
                 half4 finalCol = 0;
 
                 // diffuse
-                half3 ndl = saturate(dot(wNormal, l));
-                finalCol.xyz += color * ndl * mainLight.color * mainLight.shadowAttenuation;
+                half ndl = saturate(dot(wNormal, l));
+                finalCol.xyz += color.xyz * ndl * mainLight.color * mainLight.shadowAttenuation;
 
 
                 //Additional Light
@@ -105,14 +112,13 @@ Shader "Custom/TreeLeavesShader"
                     half3 addLightDir = normalize(addLight.direction);
                     half3 addNdL = saturate(dot(addLightDir, wNormal));
 
-                    finalCol.xyz += color * addNdL * addLight.color * addLight.distanceAttenuation * addLight.
+                    finalCol.xyz += color.xyz * addNdL * addLight.color * addLight.distanceAttenuation * addLight.
                         shadowAttenuation;
                 }
 
                 // Ambient Light
                 half3 sh = SampleSH(wNormal);
                 finalCol.xyz += sh * color.xyz;
-
 
                 finalCol.a = 1;
                 return finalCol;
@@ -139,19 +145,29 @@ Shader "Custom/TreeLeavesShader"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
+            TEXTURE2D(_BaseMap);
+            SAMPLER(sampler_BaseMap);
+
             float3 _LightDirection;
             float3 _LightPosition;
+
+            CBUFFER_START(UnityPerMaterial)
+                float4 _BaseMap_ST;
+                float _CutOff;
+            CBUFFER_END
 
             struct Attributes
             {
                 float4 posOS : POSITION;
                 float3 normalOS : NORMAL;
+                float2 uv : TEXCOORD0;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct Varings
             {
                 float4 clipPos : SV_POSITION;
+                float2 uv : TEXCOORD0;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -161,8 +177,9 @@ Shader "Custom/TreeLeavesShader"
                 Varings OUT;
                 UNITY_SETUP_INSTANCE_ID(attr);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
+                OUT.uv = TRANSFORM_TEX(attr.uv, _BaseMap);
 
-                float3 worldPos = TransformObjectToWorld(attr.posOS);
+                float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);
                 float3 worldNormal = TransformObjectToWorldNormal(attr.normalOS);
                 float3 biasedPos = ApplyShadowBias(worldPos, worldNormal, _LightDirection);
                 OUT.clipPos = TransformWorldToHClip(biasedPos);
@@ -177,6 +194,8 @@ Shader "Custom/TreeLeavesShader"
 
             half4 shadowFrag(Varings varings) : SV_TARGET
             {
+                half alpha = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, varings.uv).a;
+                clip(alpha - _CutOff);
                 return 0;
             }
             ENDHLSL
