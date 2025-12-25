@@ -1,10 +1,9 @@
-Shader "TuringCat/Branch"
+Shader "Custom/TreeLeavesShader"
 {
     Properties
     {
-        [MainTexture] _BaseMap("Base Map", 2D) = "black"
-        _NormalMap("Normal Map", 2D) = "bump"
-
+        [MainColor] _BaseColor("Base Color", Color) = (1, 1, 1, 1)
+        [MainTexture] _BaseMap("Base Map", 2D) = "white"
     }
 
     SubShader
@@ -94,8 +93,8 @@ Shader "TuringCat/Branch"
                 half4 finalCol = 0;
 
                 // diffuse
-                half ndl = saturate(dot(wNormal, l));
-                finalCol.xyz += color.xyz * ndl * mainLight.color * mainLight.shadowAttenuation;
+                half3 ndl = saturate(dot(wNormal, l));
+                finalCol.xyz += color * ndl * mainLight.color * mainLight.shadowAttenuation;
 
 
                 //Additional Light
@@ -106,7 +105,7 @@ Shader "TuringCat/Branch"
                     half3 addLightDir = normalize(addLight.direction);
                     half3 addNdL = saturate(dot(addLightDir, wNormal));
 
-                    finalCol.xyz += color.xyz * addNdL * addLight.color * addLight.distanceAttenuation * addLight.
+                    finalCol.xyz += color * addNdL * addLight.color * addLight.distanceAttenuation * addLight.
                         shadowAttenuation;
                 }
 
@@ -163,7 +162,7 @@ Shader "TuringCat/Branch"
                 UNITY_SETUP_INSTANCE_ID(attr);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
 
-                float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);
+                float3 worldPos = TransformObjectToWorld(attr.posOS);
                 float3 worldNormal = TransformObjectToWorldNormal(attr.normalOS);
                 float3 biasedPos = ApplyShadowBias(worldPos, worldNormal, _LightDirection);
                 OUT.clipPos = TransformWorldToHClip(biasedPos);
