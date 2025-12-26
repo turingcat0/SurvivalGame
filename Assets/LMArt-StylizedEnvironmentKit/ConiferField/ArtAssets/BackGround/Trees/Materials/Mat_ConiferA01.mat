@@ -195,6 +195,7 @@ Material:
     - _Glossiness: 0
     - _GlossyReflections: 1
     - _HueVariationKwToggle: 1
+    - _IsBillBoard: 0
     - _Metallic: 0
     - _MidBumpScale: 1
     - _MidUVScale: 0.5
@@ -229,7 +230,7 @@ Material:
     - _TransPower: 0.45
     - _TransScale: 1
     - _TransSharpness: 0.63
-    - _TransStrength: 1
+    - _TransStrength: 0.696
     - _TransThreshold: 0.5
     - _TwoSided: 0
     - _UVSec: 0

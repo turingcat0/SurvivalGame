@@ -24,6 +24,12 @@ Shader "TuringCat/Leaf"
         [NoScaleOffset] _SpecMap("Specular Map", 2D) = "black" {}
         _SpecStrength("Specular Strength", Range(0, 3)) = 1.0
         _SpecShininess("Specular Shininess", Range(1, 96)) = 12
+
+        [Space(16)]
+        [Header(Billboard)]
+        [Space(7)]
+        [Toggle(USE_BILLBOARD)] _IsBillBoard("Use Billboard", Float) = 1.0
+
     }
 
 
@@ -31,7 +37,7 @@ Shader "TuringCat/Leaf"
     {
         Tags
         {
-            "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline"
+            "RenderType" = "TransparencyCutout" "RenderPipeline" = "UniversalPipeline" "Queue"="AlphaTest"
         }
 
         Pass
@@ -48,6 +54,7 @@ Shader "TuringCat/Leaf"
             #pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma shader_feature USE_TRANS
             #pragma shader_feature USE_SPECULAR
+            #pragma shader_feature USE_BILLBOARD
 
 
             #pragma vertex vert
@@ -62,6 +69,7 @@ Shader "TuringCat/Leaf"
                 float2 uv : TEXCOORD0;
                 float3 normalOS : NORMAL;
                 float4 tangentOS : TANGENT;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
             struct Varyings
@@ -75,6 +83,8 @@ Shader "TuringCat/Leaf"
                 float3 tbn2 : TEXCOORD4;
 
                 float3 positionWS : TEXCOORD5;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+                UNITY_VERTEX_OUTPUT_STEREO
             };
 
             TEXTURE2D(_BaseMap);
@@ -100,8 +110,31 @@ Shader "TuringCat/Leaf"
             Varyings vert(Attributes IN)
             {
                 Varyings OUT;
+                UNITY_SETUP_INSTANCE_ID(IN);
+                UNITY_TRANSFER_INSTANCE_ID(IN, OUT);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
 
-                OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
+                // Billboard
+                #ifdef USE_BILLBOARD
+                float3 centerWS = TransformObjectToWorld(float3(0, 0, 0));
+                float3 camWS = GetCameraPositionWS();
+                float3 toCam = camWS - centerWS;
+                toCam.y = 0;
+                toCam = normalize(toCam + 1e-05);
+                float3 up = float3(0, 1, 0);
+                float3 right = normalize(cross(toCam, up));
+
+                float4x4 o2w = GetObjectToWorldMatrix();
+
+                float3 col0 = float3(o2w._m00, o2w._m10, o2w._m20);
+                float3 col1 = float3(o2w._m01, o2w._m11, o2w._m21);
+                float3 col2 = float3(o2w._m02, o2w._m12, o2w._m22);
+
+                OUT.positionWS = centerWS + IN.positionOS.z * right * col2 + IN.positionOS.y * up * col1;
+                #else
+                 OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
+                #endif
+
                 OUT.positionHCS = TransformWorldToHClip(OUT.positionWS);
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
                 OUT.normalUV = TRANSFORM_TEX(IN.uv, _NormalMap);
@@ -173,7 +206,7 @@ Shader "TuringCat/Leaf"
                 half3 viewDir = normalize(GetWorldSpaceViewDir(IN.positionWS));
                 half rdv = saturate(dot(ref, viewDir));
 
-                half3 spec = pow(rdv, _SpecShininess) * specColor.rgb * rdv * mainLight.color.rgb * mainLight.
+                half3 spec = pow(rdv, _SpecShininess) * specColor.rgb * mainLight.color.rgb * mainLight.
                     shadowAttenuation * specColor.a;
                 finalCol.xyz += spec;
                 #endif
@@ -192,7 +225,7 @@ Shader "TuringCat/Leaf"
             }
             ZWrite On
             ZTest LEqual
-            Cull Back
+            Cull Off
 
 
             HLSLPROGRAM
