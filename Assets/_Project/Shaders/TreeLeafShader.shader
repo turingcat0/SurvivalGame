@@ -27,7 +27,7 @@ Shader "TuringCat/Leaf"
 
         [Space(16)][Header(Aninmation)]
         [Space(7)]
-        [Toggle(USE_VA)]_UseAnimation("Use Animation", Float) = 1.0
+        [Toggle(USE_AN)]_UseAnimation("Use Animation", Float) = 1.0
         _AnimationScale("Animation Scale", Range(0,1)) = 1.0
 
         [Space(16)]
@@ -62,6 +62,7 @@ Shader "TuringCat/Leaf"
             #pragma shader_feature USE_TRANS
             #pragma shader_feature USE_SPECULAR
             #pragma shader_feature USE_BILLBOARD
+            #pragma shader_feature USE_AN
 
 
             #pragma vertex vert
@@ -78,6 +79,10 @@ Shader "TuringCat/Leaf"
                 float3 normalOS : NORMAL;
                 float4 tangentOS : TANGENT;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
+                #ifdef USE_AN
+                half4 color : COLOR;
+                #endif
+
             };
 
             struct Varyings
@@ -114,6 +119,7 @@ Shader "TuringCat/Leaf"
                 float _TransSharpness;
                 float _SpecStrength;
                 float _SpecShininess;
+                float _AnimationScale;
             CBUFFER_END
 
             Varyings vert(Attributes IN)
@@ -142,6 +148,10 @@ Shader "TuringCat/Leaf"
                 OUT.positionWS = centerWS + IN.positionOS.z * right * col2 + IN.positionOS.y * up * col1;
                 #else
                 OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
+                #endif
+                #ifdef USE_AN
+                float3 anim = vertexAnimation(OUT.positionWS, IN.positionOS, IN.color, _AnimationScale);
+                OUT.positionWS += anim;
                 #endif
 
                 OUT.positionHCS = TransformWorldToHClip(OUT.positionWS);

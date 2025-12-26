@@ -12,6 +12,7 @@ Material:
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
+  - USE_AN
   - USE_SPECULAR
   - USE_TRANS
   m_InvalidKeywords:
@@ -234,7 +235,7 @@ Material:
     - _TransThreshold: 0.5
     - _TwoSided: 0
     - _UVSec: 0
-    - _UseAnimation: 0
+    - _UseAnimation: 1
     - _UseSpecular: 1
     - _WINDQUALITY: 4
     - _WIND_BRANCH1: 0
