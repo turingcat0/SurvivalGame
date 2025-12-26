@@ -25,6 +25,11 @@ Shader "TuringCat/Leaf"
         _SpecStrength("Specular Strength", Range(0, 3)) = 1.0
         _SpecShininess("Specular Shininess", Range(1, 96)) = 12
 
+        [Space(16)][Header(Aninmation)]
+		[Space(7)]
+		[Toggle(USE_VA)]_UseAnimation("Use Animation", Float) = 1.0
+		_AnimationScale("Animation Scale", Range(0,1)) = 1.0
+
         [Space(16)]
         [Header(Billboard)]
         [Space(7)]
@@ -233,6 +238,7 @@ Shader "TuringCat/Leaf"
             #pragma fragment shadowFrag
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
             #pragma multi_compile_instancing
+            #pragma shader_feature USE_BILLBOARD
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
@@ -269,8 +275,28 @@ Shader "TuringCat/Leaf"
                 UNITY_SETUP_INSTANCE_ID(attr);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
                 OUT.uv = TRANSFORM_TEX(attr.uv, _BaseMap);
+                // Billboard
+                #ifdef USE_BILLBOARD
+                float3 centerWS = TransformObjectToWorld(float3(0, 0, 0));
+                float3 camWS = GetCameraPositionWS();
+                float3 toCam = camWS - centerWS;
+                toCam.y = 0;
+                toCam = normalize(toCam + 1e-05);
+                float3 up = float3(0, 1, 0);
+                float3 right = normalize(cross(toCam, up));
 
-                float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);
+                float4x4 o2w = GetObjectToWorldMatrix();
+
+                float3 col0 = float3(o2w._m00, o2w._m10, o2w._m20);
+                float3 col1 = float3(o2w._m01, o2w._m11, o2w._m21);
+                float3 col2 = float3(o2w._m02, o2w._m12, o2w._m22);
+
+                 float3 worldPos = centerWS + attr.posOS.z * right * col2 + attr.posOS.y * up * col1;
+                #else
+                 float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);
+                #endif
+
+
                 float3 worldNormal = TransformObjectToWorldNormal(attr.normalOS);
                 float3 biasedPos = ApplyShadowBias(worldPos, worldNormal, _LightDirection);
                 OUT.clipPos = TransformWorldToHClip(biasedPos);
