@@ -6,6 +6,11 @@ Shader "TuringCat/Leaf"
         _NormalMap("Normal Map", 2D) = "bump"
         _CutOff("CutOff", Float) = 0.5
 
+        _TransMap("Translucency Map", 2D) = "black"
+        _TransThreshold("Translucency Threshold", Float) = 0.0
+        _TransStrength("Translucency Strength", Float) = 1.0
+        _TransSharpness("Translucency Sharpness", Float) = 0.1
+
     }
 
     SubShader
@@ -59,11 +64,16 @@ Shader "TuringCat/Leaf"
             SAMPLER(sampler_BaseMap);
             TEXTURE2D(_NormalMap);
             SAMPLER(sampler_NormalMap);
+            TEXTURE2D(_TransMap);
+            SAMPLER(sampler_TransMap);
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseMap_ST;
                 float4 _NormalMap_ST;
                 float _CutOff;
+                float _TransThreshold;
+                float _TransStrength;
+                float _TransSharpness;
             CBUFFER_END
 
             Varyings vert(Attributes IN)
@@ -83,15 +93,15 @@ Shader "TuringCat/Leaf"
                 return OUT;
             }
 
-            half4 frag(Varyings IN) : SV_Target
+            half4 frag(Varyings IN, half facing : VFACE) : SV_Target
             {
                 half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
                 clip(color.a - _CutOff);
 
                 half4 nTex = SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, IN.normalUV);
                 half3 tNormal = UnpackNormal(nTex);
-                half3 wNormal = TransformTangentToWorld(tNormal, half3x3(IN.tbn0, IN.tbn1, IN.tbn2), true);
-
+                half3 wNormal = sign(facing) * TransformTangentToWorld(
+                    tNormal, half3x3(IN.tbn0, IN.tbn1, IN.tbn2), true);
                 // Lighting
                 // Main Light
                 float4 shadowCoord = TransformWorldToShadowCoord(IN.positionWS);
@@ -119,6 +129,18 @@ Shader "TuringCat/Leaf"
                 // Ambient Light
                 half3 sh = SampleSH(wNormal);
                 finalCol.xyz += sh * color.xyz;
+
+                // Translucency
+                half nndl = saturate(dot(-wNormal, l));
+
+                half4 transColor = SAMPLE_TEXTURE2D(_TransMap, sampler_TransMap, IN.uv);
+
+                half3 trans1 = transColor.xyz * mainLight.color * mainLight.shadowAttenuation * smoothstep(
+                    _TransThreshold, 1, nndl);
+                finalCol.xyz += trans1;
+                half3 trans2 = _TransStrength * mainLight.color * transColor.xyz * pow(nndl, _TransSharpness) *
+                    mainLight.shadowAttenuation;
+                finalCol.xyz += trans2;
 
                 finalCol.a = 1;
                 return finalCol;

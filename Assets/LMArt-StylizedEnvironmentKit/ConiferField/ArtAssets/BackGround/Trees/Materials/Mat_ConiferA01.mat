@@ -133,6 +133,10 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _TransMap:
+        m_Texture: {fileID: 2800000, guid: 76cac26da2118984da2ccd1b290503aa, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _TransTex:
         m_Texture: {fileID: 2800000, guid: 76cac26da2118984da2ccd1b290503aa, type: 3}
         m_Scale: {x: 1, y: 1}
@@ -211,9 +215,12 @@ Material:
     - _TopBumpScale: 1
     - _TopUVScale: 0.5
     - _TopWorldUV: 0
-    - _TransArea: 0.298
-    - _TransPower: 0.714
+    - _TransArea: 4.75
+    - _TransPower: 0.45
     - _TransScale: 1
+    - _TransSharpness: 0.63
+    - _TransStrength: 1
+    - _TransThreshold: 0.5
     - _TwoSided: 0
     - _UVSec: 0
     - _UseAnimation: 0
