@@ -24,6 +24,7 @@ Shader "TuringCat/Branch"
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
             #pragma multi_compile _ _ADDITIONAL_LIGHTS
             #pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
+            #pragma multi_compile_fog
 
             #pragma vertex vert
             #pragma fragment frag
@@ -51,7 +52,7 @@ Shader "TuringCat/Branch"
                 float3 tbn2 : TEXCOORD4;
 
                 float3 positionWS : TEXCOORD5;
-
+                half fogFactor : TEXCOORD6;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -75,6 +76,7 @@ Shader "TuringCat/Branch"
 
                 OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
                 OUT.positionHCS = TransformWorldToHClip(OUT.positionWS);
+                OUT.fogFactor = ComputeFogFactor(OUT.positionHCS.z);
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
                 OUT.normalUV = TRANSFORM_TEX(IN.uv, _NormalMap);
 
@@ -120,7 +122,7 @@ Shader "TuringCat/Branch"
                 // Ambient Light
                 half3 sh = SampleSH(wNormal);
                 finalCol.xyz += sh * color.xyz;
-
+                finalCol.xyz = MixFog(finalCol.xyz, IN.fogFactor);
 
                 finalCol.a = 1;
                 return finalCol;

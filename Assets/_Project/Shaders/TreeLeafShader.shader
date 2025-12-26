@@ -26,9 +26,9 @@ Shader "TuringCat/Leaf"
         _SpecShininess("Specular Shininess", Range(1, 96)) = 12
 
         [Space(16)][Header(Aninmation)]
-		[Space(7)]
-		[Toggle(USE_VA)]_UseAnimation("Use Animation", Float) = 1.0
-		_AnimationScale("Animation Scale", Range(0,1)) = 1.0
+        [Space(7)]
+        [Toggle(USE_VA)]_UseAnimation("Use Animation", Float) = 1.0
+        _AnimationScale("Animation Scale", Range(0,1)) = 1.0
 
         [Space(16)]
         [Header(Billboard)]
@@ -57,6 +57,8 @@ Shader "TuringCat/Leaf"
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
             #pragma multi_compile _ _ADDITIONAL_LIGHTS
             #pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
+            #pragma multi_compile_fog
+
             #pragma shader_feature USE_TRANS
             #pragma shader_feature USE_SPECULAR
             #pragma shader_feature USE_BILLBOARD
@@ -67,6 +69,7 @@ Shader "TuringCat/Leaf"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            #include "Common.hlsl"
 
             struct Attributes
             {
@@ -88,6 +91,7 @@ Shader "TuringCat/Leaf"
                 float3 tbn2 : TEXCOORD4;
 
                 float3 positionWS : TEXCOORD5;
+                half fogFactor : TEXCOORD6;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -137,10 +141,11 @@ Shader "TuringCat/Leaf"
 
                 OUT.positionWS = centerWS + IN.positionOS.z * right * col2 + IN.positionOS.y * up * col1;
                 #else
-                 OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
+                OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
                 #endif
 
                 OUT.positionHCS = TransformWorldToHClip(OUT.positionWS);
+                OUT.fogFactor = ComputeFogFactor(OUT.positionHCS.z);
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
                 OUT.normalUV = TRANSFORM_TEX(IN.uv, _NormalMap);
 
@@ -215,7 +220,7 @@ Shader "TuringCat/Leaf"
                     shadowAttenuation * specColor.a;
                 finalCol.xyz += spec;
                 #endif
-
+                finalCol.xyz = MixFog(finalCol.xyz, IN.fogFactor);
                 finalCol.a = 1;
                 return finalCol;
             }
@@ -293,7 +298,7 @@ Shader "TuringCat/Leaf"
 
                  float3 worldPos = centerWS + attr.posOS.z * right * col2 + attr.posOS.y * up * col1;
                 #else
-                 float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);
+                float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);
                 #endif
 
 
