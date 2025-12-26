@@ -11,7 +11,9 @@ Material:
   m_Shader: {fileID: 4800000, guid: 720407b59d5f51e46812ba7c73c348ad, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
-  m_ValidKeywords: []
+  m_ValidKeywords:
+  - USE_SPECULAR
+  - USE_TRANS
   m_InvalidKeywords:
   - BACKFACE_NORMAL_MODE_MIRROR
   - _WINDQUALITY_BEST
@@ -113,6 +115,10 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _SpecMap:
+        m_Texture: {fileID: 2800000, guid: 03cd7619a0e19de4298061ccb5067c5e, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _SpecularTex:
         m_Texture: {fileID: 2800000, guid: 03cd7619a0e19de4298061ccb5067c5e, type: 3}
         m_Scale: {x: 1, y: 1}
@@ -183,6 +189,8 @@ Material:
     - _DetailNormalMapScale: 1
     - _Distortion: 1
     - _DstBlend: 0
+    - _EnableSpecular: 1
+    - _EnableTrans: 1
     - _GlossMapScale: 1
     - _Glossiness: 0
     - _GlossyReflections: 1
@@ -206,6 +214,8 @@ Material:
     - _ShadowIntensity: 0.2
     - _Shininess: 11
     - _SmoothnessTextureChannel: 0
+    - _SpecShininess: 35.2
+    - _SpecStrength: 0.47
     - _SpecularHighlights: 1
     - _SpecularPower: 1.77
     - _SquashAmount: 1

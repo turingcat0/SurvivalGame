@@ -2,16 +2,30 @@ Shader "TuringCat/Leaf"
 {
     Properties
     {
-        [MainTexture] _BaseMap("Base Map", 2D) = "black"
-        _NormalMap("Normal Map", 2D) = "bump"
-        _CutOff("CutOff", Float) = 0.5
+        [Header(Base)]
+        [Space(7)]
+        [MainTexture] _BaseMap("Base Map", 2D) = "black" {}
+        _NormalMap("Normal Map", 2D) = "bump" {}
+        _CutOff("CutOff", Range(0,1)) = 0.5
 
-        _TransMap("Translucency Map", 2D) = "black"
-        _TransThreshold("Translucency Threshold", Float) = 0.0
-        _TransStrength("Translucency Strength", Float) = 1.0
-        _TransSharpness("Translucency Sharpness", Float) = 0.1
+        [Space(16)]
+        [Header(Translucency)]
+        [Space(7)]
+        [Toggle(USE_TRANS)] _EnableTrans("Enable Translucency", Float) = 1.0
+        [NoScaleOffset] _TransMap("Translucency Map", 2D) = "black" {}
+        _TransThreshold("Translucency Threshold", Range(0, 1)) = 0.0
+        _TransStrength("Translucency Strength", Range(0, 1)) = 1.0
+        _TransSharpness("Translucency Sharpness", Range(0.01, 16)) = 4.0
 
+        [Space(16)]
+        [Header(Specular)]
+        [Space(7)]
+        [Toggle(USE_SPECULAR)] _EnableSpecular("Enable Specular", Float) = 1.0
+        [NoScaleOffset] _SpecMap("Specular Map", 2D) = "black" {}
+        _SpecStrength("Specular Strength", Range(0, 3)) = 1.0
+        _SpecShininess("Specular Shininess", Range(1, 96)) = 12
     }
+
 
     SubShader
     {
@@ -32,6 +46,9 @@ Shader "TuringCat/Leaf"
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE
             #pragma multi_compile _ _ADDITIONAL_LIGHTS
             #pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
+            #pragma shader_feature USE_TRANS
+            #pragma shader_feature USE_SPECULAR
+
 
             #pragma vertex vert
             #pragma fragment frag
@@ -66,6 +83,8 @@ Shader "TuringCat/Leaf"
             SAMPLER(sampler_NormalMap);
             TEXTURE2D(_TransMap);
             SAMPLER(sampler_TransMap);
+            TEXTURE2D(_SpecMap);
+            SAMPLER(sampler_SpecMap);
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseMap_ST;
@@ -74,6 +93,8 @@ Shader "TuringCat/Leaf"
                 float _TransThreshold;
                 float _TransStrength;
                 float _TransSharpness;
+                float _SpecStrength;
+                float _SpecShininess;
             CBUFFER_END
 
             Varyings vert(Attributes IN)
@@ -131,6 +152,7 @@ Shader "TuringCat/Leaf"
                 finalCol.xyz += sh * color.xyz;
 
                 // Translucency
+                #ifdef USE_TRANS
                 half nndl = saturate(dot(-wNormal, l));
 
                 half4 transColor = SAMPLE_TEXTURE2D(_TransMap, sampler_TransMap, IN.uv);
@@ -141,6 +163,20 @@ Shader "TuringCat/Leaf"
                 half3 trans2 = _TransStrength * mainLight.color * transColor.xyz * pow(nndl, _TransSharpness) *
                     mainLight.shadowAttenuation;
                 finalCol.xyz += trans2;
+                #endif
+
+                // Specular
+                #ifdef USE_SPECULAR
+                half4 specColor = SAMPLE_TEXTURE2D(_SpecMap, sampler_SpecMap, IN.uv);
+
+                half3 ref = reflect(-l, wNormal);
+                half3 viewDir = normalize(GetWorldSpaceViewDir(IN.positionWS));
+                half rdv = saturate(dot(ref, viewDir));
+
+                half3 spec = pow(rdv, _SpecShininess) * specColor.rgb * rdv * mainLight.color.rgb * mainLight.
+                    shadowAttenuation * specColor.a;
+                finalCol.xyz += spec;
+                #endif
 
                 finalCol.a = 1;
                 return finalCol;
