@@ -59,6 +59,7 @@ Shader "TuringCat/Nature/Leaf"
             #pragma multi_compile _ _ADDITIONAL_LIGHTS
             #pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma multi_compile_fog
+            #pragma multi_compile_instancing
 
             #pragma shader_feature USE_TRANS
             #pragma shader_feature USE_SPECULAR
@@ -147,7 +148,7 @@ Shader "TuringCat/Nature/Leaf"
                 float3 col1 = float3(o2w._m01, o2w._m11, o2w._m21);
                 float3 col2 = float3(o2w._m02, o2w._m12, o2w._m22);
 
-                OUT.positionWS = centerWS + IN.positionOS.z * right * col2 + IN.positionOS.y * up * col1;
+                OUT.positionWS = centerWS + IN.positionOS.z * right * length(col2) + IN.positionOS.y * up * length(col1);
                 #else
                 OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
                 #endif

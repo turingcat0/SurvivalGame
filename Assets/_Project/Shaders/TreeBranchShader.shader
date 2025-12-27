@@ -25,6 +25,7 @@ Shader "TuringCat/Nature/Branch"
             #pragma multi_compile _ _ADDITIONAL_LIGHTS
             #pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma multi_compile_fog
+            #pragma multi_compile_instancing
 
             #pragma vertex vert
             #pragma fragment frag

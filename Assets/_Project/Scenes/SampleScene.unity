@@ -156,7 +156,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0.35280934, z: -0, w: 0.93569523}
-  m_LocalPosition: {x: 238.07465, y: 21.29, z: 657.4588}
+  m_LocalPosition: {x: 238.07465, y: 58.972, z: 426.7277}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -521,7 +521,7 @@ Transform:
   m_GameObject: {fileID: 1499696887}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: -0.35280934, z: 0, w: 0.93569523}
-  m_LocalPosition: {x: 238.07465, y: 21.29, z: 657.4588}
+  m_LocalPosition: {x: 238.07465, y: 58.972, z: 426.7277}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -649,7 +649,7 @@ Transform:
   m_GameObject: {fileID: 1752530781}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0.35280934, z: -0, w: 0.93569523}
-  m_LocalPosition: {x: 236.379, y: 20.218, z: 658.6311}
+  m_LocalPosition: {x: 236.379, y: 57.9, z: 427.9}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -716,63 +716,6 @@ MonoBehaviour:
   velocityZParam: VelocityZ
   groundedParam: Grounded
   velocityDampTime: 0.12
---- !u!1001 &1969539778
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 0}
-    m_Modifications:
-    - target: {fileID: -8679921383154817045, guid: 3d218a02e3e78714488a1d03c879ab5f, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: 391.4603
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 3d218a02e3e78714488a1d03c879ab5f, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 129.262
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 3d218a02e3e78714488a1d03c879ab5f, type: 3}
-      propertyPath: m_LocalPosition.z
-      value: 566.55853
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 3d218a02e3e78714488a1d03c879ab5f, type: 3}
-      propertyPath: m_LocalRotation.w
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 3d218a02e3e78714488a1d03c879ab5f, type: 3}
-      propertyPath: m_LocalRotation.x
-      value: -0.000000037748947
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 3d218a02e3e78714488a1d03c879ab5f, type: 3}
-      propertyPath: m_LocalRotation.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 3d218a02e3e78714488a1d03c879ab5f, type: 3}
-      propertyPath: m_LocalRotation.z
-      value: -0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 3d218a02e3e78714488a1d03c879ab5f, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.x
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 3d218a02e3e78714488a1d03c879ab5f, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.y
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: -8679921383154817045, guid: 3d218a02e3e78714488a1d03c879ab5f, type: 3}
-      propertyPath: m_LocalEulerAnglesHint.z
-      value: 0
-      objectReference: {fileID: 0}
-    - target: {fileID: 919132149155446097, guid: 3d218a02e3e78714488a1d03c879ab5f, type: 3}
-      propertyPath: m_Name
-      value: Grass
-      objectReference: {fileID: 0}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: 3d218a02e3e78714488a1d03c879ab5f, type: 3}
 --- !u!1 &2031386467
 GameObject:
   m_ObjectHideFlags: 0
@@ -825,7 +768,7 @@ Terrain:
   m_TreeBillboardDistance: 50
   m_TreeCrossFadeLength: 5
   m_TreeMaximumFullLODCount: 50
-  m_DetailObjectDistance: 38
+  m_DetailObjectDistance: 972
   m_DetailObjectDensity: 1
   m_HeightmapPixelError: 5
   m_SplatMapDistance: 1000
@@ -833,7 +776,7 @@ Terrain:
   m_HeightmapMaximumLOD: 0
   m_ShadowCastingMode: 2
   m_DrawHeightmap: 1
-  m_DrawInstanced: 0
+  m_DrawInstanced: 1
   m_DrawTreesAndFoliage: 1
   m_StaticShadowCaster: 0
   m_IgnoreQualitySettings: 0
@@ -937,4 +880,3 @@ SceneRoots:
   - {fileID: 2031386470}
   - {fileID: 1752530782}
   - {fileID: 1499696889}
-  - {fileID: 1969539778}
