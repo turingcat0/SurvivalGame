@@ -1,4 +1,4 @@
-Shader "TuringCat/Branch"
+Shader "TuringCat/Nature/Branch"
 {
     Properties
     {

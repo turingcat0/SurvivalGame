@@ -1,4 +1,4 @@
-Shader "TuringCat/Nature/Leaf"
+Shader "TuringCat/Nature/Grass"
 {
     Properties
     {
