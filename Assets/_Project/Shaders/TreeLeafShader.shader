@@ -34,7 +34,7 @@ Shader "TuringCat/Nature/Leaf"
         [Space(16)]
         [Header(Billboard)]
         [Space(7)]
-        [Toggle(USE_BILLBOARD)] _IsBillBoard("Use Billboard", Float) = 1.0
+        [Toggle(USE_BILLBOARD)] _IsBillBoard("Use Billboard", Float) = 0.0
 
     }
 
