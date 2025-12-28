@@ -36,6 +36,10 @@ Shader "TuringCat/Nature/Grass"
         [Space(7)]
         [Toggle(USE_BILLBOARD)] _IsBillBoard("Use Billboard", Float) = 0.0
 
+        [Space(16)]
+        [Header(Interaction)]
+        [Space(7)]
+        [Toggle(USE_INTERACTION)] _UseInteraction("Use Interaction", Float) = 0.0
     }
 
 
@@ -112,6 +116,8 @@ Shader "TuringCat/Nature/Grass"
             SAMPLER(sampler_TransMap);
             TEXTURE2D(_SpecMap);
             SAMPLER(sampler_SpecMap);
+            TEXTURE2D(_InteractionRT);
+            SAMPLER(sampler_InteractionRT);
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseMap_ST;
@@ -158,6 +164,8 @@ Shader "TuringCat/Nature/Grass"
                 OUT.positionWS += anim;
                 #endif
 
+                float4 res = SAMPLE_TEXTURE2D_GRAD(_InteractionRT, sampler_InteractionRT, float2(0, 0), 0.01, 0.01);
+                OUT.positionWS += res.xyz * 0.01;
                 OUT.positionHCS = TransformWorldToHClip(OUT.positionWS);
                 OUT.fogFactor = ComputeFogFactor(OUT.positionHCS.z);
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
