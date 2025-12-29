@@ -26,22 +26,22 @@ Shader "TuringCat/VFX/MeshProxyShader"
             struct Varyings
             {
                 float4 positionHCS : SV_POSITION;
+                float heightWS : TEXCOORD0;
             };
 
-
-            CBUFFER_START(UnityPerMaterial)
-            CBUFFER_END
 
             Varyings vert(Attributes IN)
             {
                 Varyings OUT;
-                OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
+                float3 posWS = TransformObjectToWorld(IN.positionOS.xyz);
+                OUT.heightWS = posWS.y;
+                OUT.positionHCS = TransformObjectToHClip(posWS);
                 return OUT;
             }
 
-            half4 frag(Varyings IN) : SV_Target
+            float4 frag(Varyings IN) : SV_Target
             {
-                return half4(1.0, 1.0, 1.0, 1.0);
+                return float4(IN.heightWS, .0f, .0f, 1.0f);
             }
             ENDHLSL
         }

@@ -64,12 +64,17 @@ Shader "TuringCat/Nature/Grass"
             #pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma multi_compile_fog
             #pragma multi_compile_instancing
+            #pragma target 5.0
+            // #pragma enable_d3d11_debug_symbols
 
 
             #pragma shader_feature USE_TRANS
             #pragma shader_feature USE_SPECULAR
             #pragma shader_feature USE_BILLBOARD
             #pragma shader_feature USE_AN
+            #pragma shader_feature USE_INTERACTION
+
+            // #define DEBUG
 
 
             #pragma vertex vert
@@ -86,10 +91,9 @@ Shader "TuringCat/Nature/Grass"
                 float3 normalOS : NORMAL;
                 float4 tangentOS : TANGENT;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
-                #ifdef USE_AN
+                #if defined(USE_AN) || defined(USE_INTERACTION)
                 half4 color : COLOR;
                 #endif
-
             };
 
             struct Varyings
@@ -104,6 +108,10 @@ Shader "TuringCat/Nature/Grass"
 
                 float3 positionWS : TEXCOORD5;
                 half fogFactor : TEXCOORD6;
+                #ifdef DEBUG
+                half debug : TEXCOORD7;
+                int debug2 : TEXCOORD8;
+                #endif
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -116,8 +124,18 @@ Shader "TuringCat/Nature/Grass"
             SAMPLER(sampler_TransMap);
             TEXTURE2D(_SpecMap);
             SAMPLER(sampler_SpecMap);
+
+            #ifdef USE_INTERACTION
             TEXTURE2D(_InteractionRT);
             SAMPLER(sampler_InteractionRT);
+            #endif
+
+
+            CBUFFER_START(InteractionProperties)
+                float4 _InteractionCenterWS;
+                float _InteractionRadius;
+                float _InteractionThickness;
+            CBUFFER_END
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseMap_ST;
@@ -131,6 +149,30 @@ Shader "TuringCat/Nature/Grass"
                 float _AnimationScale;
                 half4 _TransColor;
             CBUFFER_END
+
+            #ifdef USE_INTERACTION
+            float3 SampleInteractionWS(float3 ws)
+            {
+                float2 uv = (ws.xz - _InteractionCenterWS.xz) / _InteractionRadius / 2 + 0.5f;
+
+                // Edge Fade
+                float2 uvv = 1 - uv;
+                float edge = min(min(uv.x, uvv.x), min(uv.y, uvv.y));
+                float k = smoothstep(0, 0.05, edge);
+
+                float4 depths = GATHER_RED_TEXTURE2D(_InteractionRT, sampler_InteractionRT, uv);
+                float2 forceDir = float2((depths.x + depths.y) - (depths.z + depths.w),
+                                                     (depths.y + depths.w) - (depths.x + depths.z));
+                forceDir = normalize(forceDir + 1e06f);
+
+                float depth = depths.x;
+
+                depth = lerp(10000.0f, depth, k);
+                return float3(forceDir, depth);
+            }
+
+            #endif
+
 
             Varyings vert(Attributes IN)
             {
@@ -164,8 +206,20 @@ Shader "TuringCat/Nature/Grass"
                 OUT.positionWS += anim;
                 #endif
 
-                float4 res = SAMPLE_TEXTURE2D_GRAD(_InteractionRT, sampler_InteractionRT, float2(0, 0), 0.01, 0.01);
-                OUT.positionWS += res.xyz * 0.01;
+                #ifdef USE_INTERACTION
+                float3 result = SampleInteractionWS(OUT.positionWS);
+                float d = max(OUT.positionWS.y - result.z, 0);
+
+                #ifdef DEBUG
+                OUT.debug = d;
+                OUT.debug2 = IN.instanceID;
+                #endif
+
+                OUT.positionWS.xz += result.xy * d * IN.color.r;
+                // OUT.positionWS.xz += float2(1.0f, 1.0f) * d;
+
+                #endif
+
                 OUT.positionHCS = TransformWorldToHClip(OUT.positionWS);
                 OUT.fogFactor = ComputeFogFactor(OUT.positionHCS.z);
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
@@ -181,6 +235,10 @@ Shader "TuringCat/Nature/Grass"
 
             half4 frag(Varyings IN, half facing : VFACE) : SV_Target
             {
+                #ifdef  DEBUG
+                return float4(IN.debug.xx, IN.debug2, 1.0f);
+                #endif
+
                 half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, IN.uv);
                 clip(color.a - _CutOff);
 
@@ -222,10 +280,12 @@ Shader "TuringCat/Nature/Grass"
 
                 half4 transColor = SAMPLE_TEXTURE2D(_TransMap, sampler_TransMap, IN.uv);
 
-                half3 trans1 = _TransColor.xyz * transColor.xyz * mainLight.color * mainLight.shadowAttenuation * smoothstep(
-                    _TransThreshold, 1, nndl);
+                half3 trans1 = _TransColor.xyz * transColor.xyz * mainLight.color * mainLight.shadowAttenuation *
+                    smoothstep(
+                        _TransThreshold, 1, nndl);
                 finalCol.xyz += trans1;
-                half3 trans2 = _TransColor.xyz * _TransStrength * mainLight.color * transColor.xyz * pow(nndl, _TransSharpness) *
+                half3 trans2 = _TransColor.xyz * _TransStrength * mainLight.color * transColor.xyz * pow(
+                        nndl, _TransSharpness) *
                     mainLight.shadowAttenuation;
                 finalCol.xyz += trans2;
                 #endif
@@ -300,6 +360,7 @@ Shader "TuringCat/Nature/Grass"
             {
                 Varings OUT;
                 UNITY_SETUP_INSTANCE_ID(attr);
+                UNITY_TRANSFER_INSTANCE_ID(attr, OUT);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
                 OUT.uv = TRANSFORM_TEX(attr.uv, _BaseMap);
                 // Billboard

@@ -171,6 +171,7 @@ Shader "TuringCat/Nature/Branch"
             {
                 Varings OUT;
                 UNITY_SETUP_INSTANCE_ID(attr);
+                UNITY_TRANSFER_INSTANCE_ID(attr, OUT);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
 
                 float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);

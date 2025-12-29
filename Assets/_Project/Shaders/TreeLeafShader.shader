@@ -291,6 +291,7 @@ Shader "TuringCat/Nature/Leaf"
             {
                 Varings OUT;
                 UNITY_SETUP_INSTANCE_ID(attr);
+                UNITY_TRANSFER_INSTANCE_ID(attr, OUT);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
                 OUT.uv = TRANSFORM_TEX(attr.uv, _BaseMap);
                 // Billboard
