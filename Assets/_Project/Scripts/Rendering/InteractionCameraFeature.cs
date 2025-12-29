@@ -57,7 +57,7 @@ public class InteractionCameraFeature : ScriptableRendererFeature
                 builder.UseRendererList(passData.rendererList);
                 builder.SetRenderFunc(static (PassData passData, RasterGraphContext context) =>
                 {
-                    context.cmd.ClearRenderTarget(RTClearFlags.Color, Color.white, 1.0f, 0);
+                    context.cmd.ClearRenderTarget(RTClearFlags.Color, new Color(10000, 10000, 10000), 1.0f, 0);
                     context.cmd.DrawRendererList(passData.rendererList);
                 });
             }

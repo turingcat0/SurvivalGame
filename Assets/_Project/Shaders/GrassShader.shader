@@ -128,14 +128,16 @@ Shader "TuringCat/Nature/Grass"
             #ifdef USE_INTERACTION
             TEXTURE2D(_InteractionRT);
             SAMPLER(sampler_InteractionRT);
-            #endif
-
 
             CBUFFER_START(InteractionProperties)
                 float4 _InteractionCenterWS;
                 float _InteractionRadius;
                 float _InteractionThickness;
+                float4 _InteractionRT_TexelSize;
             CBUFFER_END
+
+            #endif
+
 
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseMap_ST;
@@ -148,27 +150,37 @@ Shader "TuringCat/Nature/Grass"
                 float _SpecShininess;
                 float _AnimationScale;
                 half4 _TransColor;
+
+                #ifdef USE_INTERACTION
+                float _InteractionEffectiveHeight;
+                #endif
             CBUFFER_END
 
             #ifdef USE_INTERACTION
-            float3 SampleInteractionWS(float3 ws)
+            float4 SampleInteractionWS(float3 ws)
             {
                 float2 uv = (ws.xz - _InteractionCenterWS.xz) / _InteractionRadius / 2 + 0.5f;
 
                 // Edge Fade
                 float2 uvv = 1 - uv;
                 float edge = min(min(uv.x, uvv.x), min(uv.y, uvv.y));
-                float k = smoothstep(0, 0.05, edge);
+                float strength = smoothstep(0, 0.05, edge);
 
-                float4 depths = GATHER_RED_TEXTURE2D(_InteractionRT, sampler_InteractionRT, uv);
-                float2 forceDir = float2((depths.x + depths.y) - (depths.z + depths.w),
-                                                     (depths.y + depths.w) - (depths.x + depths.z));
-                forceDir = normalize(forceDir + 1e06f);
+                // float4 depths = GATHER_RED_TEXTURE2D(_InteractionRT, sampler_InteractionRT, uv);
+                float2 texel = _InteractionRT_TexelSize.xy; // x=1/width, y=1/height
+                float hC = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv, 0).r;
+                float hR = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv + float2(texel.x,0), 0).r;
+                float hL = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv - float2(texel.x,0), 0).r;
+                float hU = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv + float2(0,texel.y), 0).r;
+                float hD = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv - float2(0,texel.y), 0).r;
 
-                float depth = depths.x;
+                float2 grad = float2(hR - hL, hU - hD);
+                float g2 = dot(grad, grad);
+                float2 dir = (g2 > 1e-10) ? (grad * rsqrt(g2)) : float2(0, 0);
 
-                depth = lerp(10000.0f, depth, k);
-                return float3(forceDir, depth);
+                float depth = hC;
+
+                return float4(dir, depth, strength);
             }
 
             #endif
@@ -207,7 +219,7 @@ Shader "TuringCat/Nature/Grass"
                 #endif
 
                 #ifdef USE_INTERACTION
-                float3 result = SampleInteractionWS(OUT.positionWS);
+                float4 result = SampleInteractionWS(OUT.positionWS);
                 float d = max(OUT.positionWS.y - result.z, 0);
 
                 #ifdef DEBUG
@@ -215,8 +227,10 @@ Shader "TuringCat/Nature/Grass"
                 OUT.debug2 = IN.instanceID;
                 #endif
 
-                OUT.positionWS.xz += result.xy * d * IN.color.r;
-                // OUT.positionWS.xz += float2(1.0f, 1.0f) * d;
+                float heightEffectiveFactor =  1.0 - step(_InteractionEffectiveHeight, d);
+
+                OUT.positionWS.xz += result.xy * d * IN.color.r * result.w * heightEffectiveFactor;
+                OUT.positionWS.y -= d * result.w * heightEffectiveFactor;
 
                 #endif
 
@@ -379,7 +393,7 @@ Shader "TuringCat/Nature/Grass"
                 float3 col1 = float3(o2w._m01, o2w._m11, o2w._m21);
                 float3 col2 = float3(o2w._m02, o2w._m12, o2w._m22);
 
-                 float3 worldPos = centerWS + attr.posOS.z * right * col2 + attr.posOS.y * up * col1;
+                 float3 worldPos = centerWS + attr.posOS.z * right * length(col2) + attr.posOS.y * up * length(col1);
                 #else
                 float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);
                 #endif

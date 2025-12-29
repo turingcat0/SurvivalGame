@@ -310,7 +310,7 @@ Shader "TuringCat/Nature/Leaf"
                 float3 col1 = float3(o2w._m01, o2w._m11, o2w._m21);
                 float3 col2 = float3(o2w._m02, o2w._m12, o2w._m22);
 
-                 float3 worldPos = centerWS + attr.posOS.z * right * col2 + attr.posOS.y * up * col1;
+                 float3 worldPos = centerWS + attr.posOS.z * right * length(col2) + attr.posOS.y * up * length(col1);
                 #else
                 float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);
                 #endif

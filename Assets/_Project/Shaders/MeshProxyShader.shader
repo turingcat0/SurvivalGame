@@ -35,7 +35,7 @@ Shader "TuringCat/VFX/MeshProxyShader"
                 Varyings OUT;
                 float3 posWS = TransformObjectToWorld(IN.positionOS.xyz);
                 OUT.heightWS = posWS.y;
-                OUT.positionHCS = TransformObjectToHClip(posWS);
+                OUT.positionHCS = TransformWorldToHClip(posWS);
                 return OUT;
             }
 
