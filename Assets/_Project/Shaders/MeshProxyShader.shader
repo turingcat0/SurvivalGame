@@ -2,7 +2,10 @@ Shader "TuringCat/VFX/MeshProxyShader"
 {
     SubShader
     {
-        Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" }
+        Tags
+        {
+            "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline"
+        }
 
         Pass
         {
@@ -12,7 +15,6 @@ Shader "TuringCat/VFX/MeshProxyShader"
                 "LightMode" = "Interaction"
             }
             HLSLPROGRAM
-
             #pragma vertex vert
             #pragma fragment frag
 
@@ -26,7 +28,6 @@ Shader "TuringCat/VFX/MeshProxyShader"
             struct Varyings
             {
                 float4 positionHCS : SV_POSITION;
-                float heightWS : TEXCOORD0;
             };
 
 
@@ -34,14 +35,15 @@ Shader "TuringCat/VFX/MeshProxyShader"
             {
                 Varyings OUT;
                 float3 posWS = TransformObjectToWorld(IN.positionOS.xyz);
-                OUT.heightWS = posWS.y;
                 OUT.positionHCS = TransformWorldToHClip(posWS);
                 return OUT;
             }
 
             float4 frag(Varyings IN) : SV_Target
             {
-                return float4(IN.heightWS, .0f, .0f, 1.0f);
+                float ndcZ = IN.positionHCS.z / IN.positionHCS.w;
+                float depth01 = (ndcZ - UNITY_NEAR_CLIP_VALUE) / (UNITY_RAW_FAR_CLIP_VALUE - UNITY_NEAR_CLIP_VALUE);
+                return float4(0.0f, 0.0f, saturate(depth01), 1.0f);
             }
             ENDHLSL
         }

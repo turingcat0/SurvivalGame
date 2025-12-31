@@ -19,12 +19,12 @@ public class TextureHandler : MonoBehaviour
     void OnEnable()
     {
         if (rtCam == null) rtCam = GetComponent<Camera>();
-        RenderPipelineManager.beginCameraRendering += OnEndCameraRendering;
+        RenderPipelineManager.beginCameraRendering += OnBeginCameraRendering;
     }
 
     void OnDisable()
     {
-        RenderPipelineManager.beginCameraRendering -= OnEndCameraRendering;
+        RenderPipelineManager.beginCameraRendering -= OnBeginCameraRendering;
     }
 
     private void LateUpdate()
@@ -46,7 +46,7 @@ public class TextureHandler : MonoBehaviour
         Shader.SetGlobalVector(globalTexelSizeName, new Vector4(1f / w, 1f / h, w, h));
     }
 
-    void OnEndCameraRendering(ScriptableRenderContext ctx, Camera cam)
+    void OnBeginCameraRendering(ScriptableRenderContext ctx, Camera cam)
     {
         Shader.SetGlobalTexture(globalName, rtCam.targetTexture);
     }

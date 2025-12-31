@@ -40,6 +40,7 @@ Shader "TuringCat/Nature/Grass"
         [Header(Interaction)]
         [Space(7)]
         [Toggle(USE_INTERACTION)] _UseInteraction("Use Interaction", Float) = 0.0
+        _InteractionEffectiveHeight("Effective Height", Float) = 3.0
     }
 
 
@@ -64,7 +65,6 @@ Shader "TuringCat/Nature/Grass"
             #pragma multi_compile _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma multi_compile_fog
             #pragma multi_compile_instancing
-            #pragma target 5.0
             // #pragma enable_d3d11_debug_symbols
 
 
@@ -168,19 +168,19 @@ Shader "TuringCat/Nature/Grass"
 
                 // float4 depths = GATHER_RED_TEXTURE2D(_InteractionRT, sampler_InteractionRT, uv);
                 float2 texel = _InteractionRT_TexelSize.xy; // x=1/width, y=1/height
-                float hC = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv, 0).r;
-                float hR = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv + float2(texel.x,0), 0).r;
-                float hL = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv - float2(texel.x,0), 0).r;
-                float hU = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv + float2(0,texel.y), 0).r;
-                float hD = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv - float2(0,texel.y), 0).r;
+                float hC = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv, 0).b;
+                float hR = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv + float2(texel.x,0), 0).b;
+                float hL = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv - float2(texel.x,0), 0).b;
+                float hU = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv + float2(0,texel.y), 0).b;
+                float hD = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv - float2(0,texel.y), 0).b;
 
                 float2 grad = float2(hR - hL, hU - hD);
                 float g2 = dot(grad, grad);
                 float2 dir = (g2 > 1e-10) ? (grad * rsqrt(g2)) : float2(0, 0);
 
-                float depth = hC;
+                float height = _InteractionCenterWS.y + _InteractionThickness * (hC - 0.5f);
 
-                return float4(dir, depth, strength);
+                return float4(dir, height, strength);
             }
 
             #endif
@@ -220,6 +220,8 @@ Shader "TuringCat/Nature/Grass"
 
                 #ifdef USE_INTERACTION
                 float4 result = SampleInteractionWS(OUT.positionWS);
+
+
                 float d = max(OUT.positionWS.y - result.z, 0);
 
                 #ifdef DEBUG
