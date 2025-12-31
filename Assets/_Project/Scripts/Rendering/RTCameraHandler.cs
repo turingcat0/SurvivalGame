@@ -40,10 +40,6 @@ public class TextureHandler : MonoBehaviour
         Shader.SetGlobalFloat(globalRadiusName, radius);
         Shader.SetGlobalFloat(globalThicknessName, depthRadius);
 
-        var rt = rtCam.targetTexture;
-        int w = rt.width;
-        int h = rt.height;
-        Shader.SetGlobalVector(globalTexelSizeName, new Vector4(1f / w, 1f / h, w, h));
     }
 
     void OnBeginCameraRendering(ScriptableRenderContext ctx, Camera cam)

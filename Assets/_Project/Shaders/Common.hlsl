@@ -22,3 +22,11 @@ inline float3 vertexAnimation(float3 worldPos, float4 vertex, half4 color, float
 
     return move;
 }
+
+
+float3 RotateAroundAxis(float3 v, float3 axis, float angle)
+{
+    float s, c;
+    sincos(angle, s, c);
+    return v * c + cross(axis, v) * s + axis * dot(axis, v) * (1.0 - c);
+}
