@@ -15,9 +15,10 @@ public class InteractionCameraFeature : ScriptableRendererFeature
         public string globalTextureName = "_InteractionRT";
         public int rtSize = 512;
         public float recoverSpeed = 1.5f;
+        public float resistance = 0.5f;
     }
 
-    public Shader decayShader;
+    public Shader resolveShader;
 
 
     class InteractionPass : ScriptableRenderPass
@@ -27,14 +28,16 @@ public class InteractionCameraFeature : ScriptableRendererFeature
         RTHandle rtB;
         bool aOrB = true;
 
-        Material decayMaterial;
+        Material resolveMaterial;
         Vector4 lastCenterWS;
         bool hasHistory;
 
         static readonly int PrevTextureID = Shader.PropertyToID("_PrevTexture");
+        static readonly int ImpulseTextureID = Shader.PropertyToID("_ImpulseTexture");
         static readonly int DeltaTimeID = Shader.PropertyToID("_DeltaTime");
         static readonly int RecoverySpeedID = Shader.PropertyToID("_RecoverySpeed");
         static readonly int ReprojectOffsetID = Shader.PropertyToID("_ReprojectOffset");
+        static readonly int ResistanceID = Shader.PropertyToID("_Resistance");
 
         static readonly int CenterID = Shader.PropertyToID("_InteractionCenterWS");
         static readonly int RadiusID = Shader.PropertyToID("_InteractionRadius");
@@ -45,7 +48,7 @@ public class InteractionCameraFeature : ScriptableRendererFeature
             s = settings;
             if (decayShader)
             {
-                decayMaterial = CoreUtils.CreateEngineMaterial(decayShader);
+                resolveMaterial = CoreUtils.CreateEngineMaterial(decayShader);
             }
         }
 
@@ -78,10 +81,12 @@ public class InteractionCameraFeature : ScriptableRendererFeature
                     VRTextureUsage.None,
                     "_InteractionRT_InternalA"
                 );
+                var active = RenderTexture.active;
+                RenderTexture.active = rtA.rt; GL.Clear(true, true, Color.clear);
+                RenderTexture.active = active;
                 hasHistory = false;
             }
 
-            SharedInteractionRT = rtA.rt;
             if (rtB == null || rtB.rt == null || rtB.rt.width != s.rtSize || rtB.rt.height != s.rtSize)
             {
                 rtB?.Release();
@@ -109,6 +114,9 @@ public class InteractionCameraFeature : ScriptableRendererFeature
                     VRTextureUsage.None,
                     "_InteractionRT_InternalB"
                 );
+                var active = RenderTexture.active;
+                RenderTexture.active = rtB.rt; GL.Clear(true, true, Color.clear);
+                RenderTexture.active = active;
             }
         }
 
@@ -118,26 +126,28 @@ public class InteractionCameraFeature : ScriptableRendererFeature
             rtA = null;
             rtB?.Release();
             rtB = null;
-            CoreUtils.Destroy(decayMaterial);
-            decayMaterial = null;
+            CoreUtils.Destroy(resolveMaterial);
+            resolveMaterial = null;
         }
 
         class StampData
         {
-            public RendererListHandle rendererList;
-            public TextureHandle rt;
+            public RendererListHandle RendererList;
+            public TextureHandle ImpulseTexture;
         }
 
         class DecayData
         {
-            public TextureHandle prev;
+            public TextureHandle Prev;
+            public TextureHandle ImpulseTexture;
+            public TextureHandle curr;
         }
 
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             EnsureRT();
-            if (decayMaterial == null)
+            if (resolveMaterial == null)
             {
                 return;
             }
@@ -145,49 +155,7 @@ public class InteractionCameraFeature : ScriptableRendererFeature
             var camData = frameData.Get<UniversalCameraData>();
             var renderData = frameData.Get<UniversalRenderingData>();
 
-
-            var prevRT = aOrB ? rtA : rtB;
-            var nextRT = aOrB ? rtB : rtA;
-            aOrB = !aOrB;
-
-            var prev = renderGraph.ImportTexture(prevRT);
-            var next = renderGraph.ImportTexture(nextRT);
-
-            var curCenterWS = Shader.GetGlobalVector(CenterID);
-            float radius = Shader.GetGlobalFloat(RadiusID);
-            var offset = Vector2.zero;
-
-            if (hasHistory)
-            {
-                // uv_prev = uv_cur + (Ccur - Cprev) / (2R)
-                float denom = Mathf.Max(1e-6f, 2.0f * radius);
-                offset = new Vector2(curCenterWS.x - lastCenterWS.x, curCenterWS.z - lastCenterWS.z) / denom;
-            }
-
-            lastCenterWS = curCenterWS;
-            hasHistory = true;
-
-            float dt = Application.isPlaying ? Time.deltaTime : Time.unscaledDeltaTime;
-            dt = Mathf.Clamp(dt, 0.0f, 0.1f);
-
-            // Pass 1, prev -> curr, decay
-            using (var builder = renderGraph.AddRasterRenderPass<DecayData>("InteractRT_Decay", out var passData))
-            {
-                passData.prev = prev;
-
-                builder.UseTexture(passData.prev, AccessFlags.Read);
-                builder.SetRenderAttachment(next, 0, AccessFlags.Write);
-                builder.SetRenderFunc((DecayData data, RasterGraphContext ctx) =>
-                {
-                    decayMaterial.SetTexture(PrevTextureID, data.prev);
-                    decayMaterial.SetFloat(DeltaTimeID, dt);
-                    decayMaterial.SetFloat(RecoverySpeedID, s.recoverSpeed);
-                    decayMaterial.SetVector(ReprojectOffsetID, offset);
-                    CoreUtils.DrawFullScreen(ctx.cmd, decayMaterial, shaderPassId: 0);
-                });
-            }
-
-
+            // Pass 1, stamp -> impulse
             var shaderTag = new ShaderTagId(s.shaderTag);
 
             var sorting = new SortingSettings(camData.camera);
@@ -201,21 +169,81 @@ public class InteractionCameraFeature : ScriptableRendererFeature
             var renderListParam = new RendererListParams(renderData.cullResults, drawing, filtering);
             var rendererList = renderGraph.CreateRendererList(renderListParam);
 
+            var impulseTextureDesc = new TextureDesc(s.rtSize, s.rtSize)
+            {
+                colorFormat = GraphicsFormat.R16G16B16A16_SNorm,
+                depthBufferBits = DepthBits.None,
+                msaaSamples = MSAASamples.None,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                name = "InteractionImpulse"
+            };
+
+            var impulseTexture = renderGraph.CreateTexture(impulseTextureDesc);
+
             using (var builder = renderGraph.AddRasterRenderPass<StampData>("InteractionRT", out var passData))
             {
-                passData.rendererList = rendererList;
-                passData.rt = prev;
+                passData.RendererList = rendererList;
+                passData.ImpulseTexture = impulseTexture;
 
-
-                builder.SetRenderAttachment(prev, 0, AccessFlags.Write);
-                builder.UseRendererList(passData.rendererList);
+                builder.SetRenderAttachment(passData.ImpulseTexture, 0, AccessFlags.Write);
+                builder.UseRendererList(passData.RendererList);
 
                 builder.SetRenderFunc(static (StampData stampData, RasterGraphContext context) =>
                 {
-                    // context.cmd.ClearRenderTarget(RTClearFlags.Color, Color.clear, 1.0f, 0);
-                    context.cmd.DrawRendererList(stampData.rendererList);
+                    context.cmd.ClearRenderTarget(RTClearFlags.Color, Color.clear, 1.0f, 0);
+                    context.cmd.DrawRendererList(stampData.RendererList);
                 });
             }
+
+
+            // Pass 2 , prev + impulse -> curr
+            var prevRT = aOrB ? rtA : rtB;
+            var currRT = aOrB ? rtB : rtA;
+            aOrB = !aOrB;
+
+            var prev = renderGraph.ImportTexture(prevRT);
+            var curr = renderGraph.ImportTexture(currRT);
+
+            var curCenterWS = Shader.GetGlobalVector(CenterID);
+            float radius = Shader.GetGlobalFloat(RadiusID);
+            var offset = Vector2.zero;
+
+            if (hasHistory)
+            {
+                float denom = Mathf.Max(1e-6f, 2.0f * radius);
+                offset = new Vector2(curCenterWS.x - lastCenterWS.x, curCenterWS.z - lastCenterWS.z) / denom;
+            }
+
+            lastCenterWS = curCenterWS;
+            hasHistory = true;
+
+            float dt = Application.isPlaying ? Time.deltaTime : Time.unscaledDeltaTime;
+            dt = Mathf.Clamp(dt, 0.0f, 0.1f);
+
+            using (var builder = renderGraph.AddRasterRenderPass<DecayData>("InteractRT_Decay", out var passData))
+            {
+                passData.Prev = prev;
+                passData.ImpulseTexture = impulseTexture;
+                passData.curr = curr;
+
+                builder.UseTexture(passData.Prev, AccessFlags.Read);
+                builder.UseTexture(passData.ImpulseTexture, AccessFlags.Read);
+                builder.SetRenderAttachment(passData.curr, 0, AccessFlags.Write);
+
+                builder.SetRenderFunc((DecayData data, RasterGraphContext ctx) =>
+                {
+                    resolveMaterial.SetTexture(PrevTextureID, data.Prev);
+                    resolveMaterial.SetTexture(ImpulseTextureID, data.ImpulseTexture);
+                    resolveMaterial.SetFloat(DeltaTimeID, dt);
+                    resolveMaterial.SetFloat(RecoverySpeedID, s.recoverSpeed);
+                    resolveMaterial.SetVector(ReprojectOffsetID, offset);
+                    resolveMaterial.SetFloat(ResistanceID,  s.resistance);
+                    CoreUtils.DrawFullScreen(ctx.cmd, resolveMaterial, shaderPassId: 0);
+                });
+            }
+
+            SharedInteractionRT = currRT.rt;
         }
     }
 
@@ -229,7 +257,7 @@ public class InteractionCameraFeature : ScriptableRendererFeature
     public override void Create()
     {
         SharedInteractionTexId = Shader.PropertyToID(settings.globalTextureName);
-        pass = new InteractionPass(settings, decayShader)
+        pass = new InteractionPass(settings, resolveShader)
         {
             renderPassEvent = settings.renderPassEvent
         };

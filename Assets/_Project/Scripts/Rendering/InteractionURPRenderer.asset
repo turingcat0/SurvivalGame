@@ -68,10 +68,11 @@ MonoBehaviour:
   m_Name: InteractionCameraFeature
   m_EditorClassIdentifier: Assembly-CSharp::InteractionCameraFeature
   m_Active: 1
-  decayShader: {fileID: 4800000, guid: 65a830518291cc246bcf9b2164c92e74, type: 3}
+  resolveShader: {fileID: 4800000, guid: 65a830518291cc246bcf9b2164c92e74, type: 3}
   settings:
     renderPassEvent: 300
     shaderTag: Interaction
     globalTextureName: _InteractionRT
     rtSize: 512
-    recoverSpeed: 1.5
+    recoverSpeed: 0.05
+    resistance: 1

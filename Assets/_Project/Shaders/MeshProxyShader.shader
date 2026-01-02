@@ -10,9 +10,6 @@ Shader "TuringCat/VFX/MeshProxyShader"
         Pass
         {
             Name "Interaction"
-            ZWrite Off
-            ZTest Always
-            Blend SrcAlpha OneMinusSrcAlpha
 
             Tags
             {
