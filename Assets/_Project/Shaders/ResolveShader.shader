@@ -63,12 +63,16 @@ Shader "TuringCat/VFX/ResolveShader"
                 float k = max(0, _RecoverySpeed);
                 float decay = exp(-k * _DeltaTime);
                 // debug
-                // float4 decayedPrev = prev * decay;
-                float4 decayedPrev = prev;
+                float4 decayedPrev = prev * decay;
 
-                float resistance = saturate(dot(decayedPrev.xy, decayedPrev.xy) * 0.5);
+                float resistance = saturate(dot(decayedPrev.xy, decayedPrev.xy));
                 resistance = pow(1 - resistance, _Resistance);
-                return lerp(decayedPrev, impulse, resistance);
+
+                float2 mask = step(abs(decayedPrev.xy), abs(impulse.xy));
+                float2 a = lerp(decayedPrev.xy, impulse.xy, mask);
+                float2 delta = a - decayedPrev.xy;
+
+                return clamp(decayedPrev + float4(delta * resistance /** _DeltaTime*/, impulse.zw), -1, 1);
             }
             ENDHLSL
         }

@@ -322,6 +322,7 @@ Shader "TuringCat/Nature/Grass"
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
             #pragma multi_compile_instancing
             #pragma shader_feature USE_BILLBOARD
+            #pragma shader_feature USE_INTERACTION
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
@@ -334,13 +335,52 @@ Shader "TuringCat/Nature/Grass"
             CBUFFER_START(UnityPerMaterial)
                 float4 _BaseMap_ST;
                 float _CutOff;
+                #ifdef USE_INTERACTION
+                float _InteractionEffectiveHeight;
+                float _InteractionStrength;
+                #endif
             CBUFFER_END
+
+            #ifdef USE_INTERACTION
+            TEXTURE2D(_InteractionRT);
+            SAMPLER(sampler_InteractionRT);
+
+            CBUFFER_START(InteractionProperties)
+                float4 _InteractionCenterWS;
+                float _InteractionRadius;
+                float _InteractionThickness;
+            CBUFFER_END
+
+            #endif
+
+
+            #ifdef USE_INTERACTION
+            float4 SampleInteractionWS(float3 ws)
+            {
+                float2 uv = (ws.xz - _InteractionCenterWS.xz) / _InteractionRadius / 2 + 0.5f;
+
+                // Edge Fade
+                float2 uvv = 1 - uv;
+                float edge = min(min(uv.x, uvv.x), min(uv.y, uvv.y));
+                float strength = smoothstep(0, 0.05, edge);
+
+                float4 tex = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv, 0);
+
+                float height = _InteractionCenterWS.y + _InteractionThickness * (tex.z - 0.5f);
+
+                return float4(tex.xy, height, strength);
+            }
+
+            #endif
 
             struct Attributes
             {
                 float4 posOS : POSITION;
                 float3 normalOS : NORMAL;
                 float2 uv : TEXCOORD0;
+                #if defined(USE_AN) || defined(USE_INTERACTION)
+                half4 color : COLOR;
+                #endif
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
 
@@ -378,6 +418,13 @@ Shader "TuringCat/Nature/Grass"
                  float3 worldPos = centerWS + attr.posOS.z * right * length(col2) + attr.posOS.y * up * length(col1);
                 #else
                 float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);
+                #endif
+
+                #ifdef USE_INTERACTION
+                float4 inter = SampleInteractionWS(TransformObjectToWorld(float3(0, 0, 0)));
+
+                worldPos.xz += inter.xy * attr.color.r * inter.w * _InteractionStrength;
+
                 #endif
 
 

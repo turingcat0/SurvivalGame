@@ -34,6 +34,10 @@ Shader "TuringCat/VFX/MeshProxyShader"
                 float pressure : TEXCOORD1;
             };
 
+            CBUFFER_START(UnityPerMaterial)
+            float2 _Speed;
+            CBUFFER_END
+
 
             Varyings vert(Attributes IN)
             {
@@ -51,8 +55,15 @@ Shader "TuringCat/VFX/MeshProxyShader"
                 float depth01 = (ndcZ - UNITY_NEAR_CLIP_VALUE) / (UNITY_RAW_FAR_CLIP_VALUE - UNITY_NEAR_CLIP_VALUE);
                 float2 xz = IN.normalWS.xz;
                 float l2 = dot(xz, xz);
-                float2 dirXZ = (l2 > 1e-12) ? (xz * rsqrt(l2)) : float2(0, 0);
-                float2 forceDir = dirXZ * IN.pressure * float2(1, -1);
+                float2 dirXZ = (l2 > 1e-12) ? (xz * rsqrt(l2)) : float2(0, 0) ;
+
+                dirXZ *= float2(1, -1);
+                float c = dot(dirXZ, _Speed);
+                float atten = pow(1 - saturate(-c), 14.514f);
+                float moving = saturate(step(1e-5, dot(_Speed, _Speed)) + 0.5f);
+
+                //debug
+                float2 forceDir = dirXZ * IN.pressure  * atten * moving;
                 return float4(forceDir, saturate(depth01), saturate(IN.pressure));
             }
             ENDHLSL
