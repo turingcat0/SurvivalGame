@@ -210,11 +210,36 @@ Shader "TuringCat/Nature/Grass"
                 #endif
 
                 #ifdef USE_INTERACTION
-                float4 inter = SampleInteractionWS(TransformObjectToWorld(float3(0, 0, 0)));
+                float3 rootWS = TransformObjectToWorld(float3(0, 0, 0));
+                float4 inter = SampleInteractionWS(rootWS);
 
-                OUT.positionWS.xz += inter.xy * IN.color.r * inter.w * _InteractionStrength;
+                float3 bendWS = float3(inter.x, 0, inter.y);
+                float bendLen = length(bendWS);
 
+                float tipW = pow(saturate(IN.color.r), 3.0f);
+
+                float angle = bendLen * _InteractionStrength * tipW * inter.w;
+                angle = min(angle, 1.3f);
+
+                float3 up = float3(0, 1, 0);
+                float3 bendDir = (bendLen > 1e-6) ? (bendWS / bendLen) : float3(0, 0, 0);
+                float3 axis = cross(up, bendDir);
+                float axisLen2 = dot(axis, axis);
+
+                float3 v = OUT.positionWS - rootWS;
+
+                if (axisLen2 > 1e-8 && angle != 0)
+                {
+                    axis *= rsqrt(axisLen2);
+
+                    float s = sin(angle);
+                    float c = cos(angle);
+                    float3 vRot = v * c + cross(axis, v) * s + axis * dot(axis, v) * (1 - c);
+
+                    OUT.positionWS = rootWS + vRot * lerp(1.0f, 0.8f, angle / 1.3f);
+                }
                 #endif
+
 
                 OUT.positionHCS = TransformWorldToHClip(OUT.positionWS);
                 OUT.fogFactor = ComputeFogFactor(OUT.positionHCS.z);

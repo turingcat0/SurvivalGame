@@ -72,7 +72,7 @@ Shader "TuringCat/VFX/ResolveShader"
                 float2 a = lerp(decayedPrev.xy, impulse.xy, mask);
                 float2 delta = a - decayedPrev.xy;
 
-                return clamp(decayedPrev + float4(delta * resistance /** _DeltaTime*/, impulse.zw), -1, 1);
+                return clamp(decayedPrev + float4(delta * resistance, impulse.zw), -1, 1);
             }
             ENDHLSL
         }

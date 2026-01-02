@@ -74,5 +74,5 @@ MonoBehaviour:
     shaderTag: Interaction
     globalTextureName: _InteractionRT
     rtSize: 512
-    recoverSpeed: 0.05
+    recoverSpeed: 0.1
     resistance: 1
