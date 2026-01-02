@@ -44,6 +44,8 @@ public class TextureHandler : MonoBehaviour
 
     void OnBeginCameraRendering(ScriptableRenderContext ctx, Camera cam)
     {
-        Shader.SetGlobalTexture(globalName, rtCam.targetTexture);
+        var rt = InteractionCameraFeature.SharedInteractionRT;
+        if (rt != null)
+            Shader.SetGlobalTexture(InteractionCameraFeature.SharedInteractionTexId, rt);
     }
 }

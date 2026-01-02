@@ -10,6 +10,10 @@ Shader "TuringCat/VFX/MeshProxyShader"
         Pass
         {
             Name "Interaction"
+            ZWrite Off
+            ZTest Always
+            Blend SrcAlpha OneMinusSrcAlpha
+
             Tags
             {
                 "LightMode" = "Interaction"
@@ -52,7 +56,7 @@ Shader "TuringCat/VFX/MeshProxyShader"
                 float l2 = dot(xz, xz);
                 float2 dirXZ = (l2 > 1e-12) ? (xz * rsqrt(l2)) : float2(0, 0);
                 float2 forceDir = dirXZ * IN.pressure * float2(1, -1);
-                return float4((forceDir + 1.0f) / 2, saturate(depth01), 1.0f);
+                return float4(forceDir, saturate(depth01), saturate(IN.pressure));
             }
             ENDHLSL
         }

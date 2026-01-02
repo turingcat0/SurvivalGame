@@ -171,7 +171,7 @@ Shader "TuringCat/Nature/Grass"
 
                 float height = _InteractionCenterWS.y + _InteractionThickness * (tex.z - 0.5f);
 
-                return float4(tex.xy * 2.0 - 1.0, height, strength);
+                return float4(tex.xy, height, strength);
             }
 
             #endif
