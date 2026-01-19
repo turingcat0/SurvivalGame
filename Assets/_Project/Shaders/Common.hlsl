@@ -1,3 +1,6 @@
+#ifndef COMMON_H
+#define COMMON_H
+
 float rand(float2 st)
 {
     // Simple hash-based noise; used for pseudo-random wind variation.
@@ -30,3 +33,5 @@ float3 RotateAroundAxis(float3 v, float3 axis, float angle)
     sincos(angle, s, c);
     return v * c + cross(axis, v) * s + axis * dot(axis, v) * (1.0 - c);
 }
+
+#endif

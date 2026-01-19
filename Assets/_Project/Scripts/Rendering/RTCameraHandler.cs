@@ -16,6 +16,8 @@ public class TextureHandler : MonoBehaviour
     public GameObject trackObject;
     public int height = 5;
 
+    public int rtResolution = 512;
+
     void OnEnable()
     {
         if (rtCam == null) rtCam = GetComponent<Camera>();
@@ -29,12 +31,22 @@ public class TextureHandler : MonoBehaviour
 
     private void LateUpdate()
     {
-        transform.position = trackObject.transform.position - new Vector3(0, height, 0);
-        transform.rotation = Quaternion.Euler(-90, 0, 0);
+        Vector3 targetPos = trackObject.transform.position - new Vector3(0, height, 0);
+
+
 
         var depthRadius = rtCam.farClipPlane - rtCam.nearClipPlane;
         var center = rtCam.transform.position + rtCam.transform.forward * ((rtCam.nearClipPlane + rtCam.farClipPlane) * 0.5f);
         var radius = rtCam.orthographicSize;
+
+        var worldSize = rtCam.orthographicSize * 2;
+        float unitPerPixel = worldSize / rtResolution;
+
+        float snapX = Mathf.Round(targetPos.x / unitPerPixel) * unitPerPixel;
+        float snapZ = Mathf.Round(targetPos.z / unitPerPixel) * unitPerPixel;
+
+        transform.position = new  Vector3(snapX, targetPos.y, snapZ);
+        transform.rotation = Quaternion.Euler(-90, 0, 0);
 
         Shader.SetGlobalVector(globalCenterName, center);
         Shader.SetGlobalFloat(globalRadiusName, radius);

@@ -42,6 +42,7 @@ Shader "TuringCat/Nature/Grass"
         [Toggle(USE_INTERACTION)] _UseInteraction("Use Interaction", Float) = 0.0
         _InteractionEffectiveHeight("Effective Height", Float) = 3.0
         _InteractionStrength("Strength", Float) = 1.0
+        _InteractionMaxAngle("Max Angle (Radians)", Float) = 1.0
     }
 
 
@@ -83,7 +84,8 @@ Shader "TuringCat/Nature/Grass"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
-            #include "Common.hlsl"
+             #include "Common.hlsl"
+            #include "GrassCommon.hlsl"
 
             struct Attributes
             {
@@ -109,6 +111,8 @@ Shader "TuringCat/Nature/Grass"
 
                 float3 positionWS : TEXCOORD5;
                 half fogFactor : TEXCOORD6;
+
+                half color : TEXCOORD7;
                 #ifdef DEBUG
                 half debug : TEXCOORD7;
                 int debug2 : TEXCOORD8;
@@ -116,65 +120,6 @@ Shader "TuringCat/Nature/Grass"
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
-
-            TEXTURE2D(_BaseMap);
-            SAMPLER(sampler_BaseMap);
-            TEXTURE2D(_NormalMap);
-            SAMPLER(sampler_NormalMap);
-            TEXTURE2D(_TransMap);
-            SAMPLER(sampler_TransMap);
-            TEXTURE2D(_SpecMap);
-            SAMPLER(sampler_SpecMap);
-
-            #ifdef USE_INTERACTION
-            TEXTURE2D(_InteractionRT);
-            SAMPLER(sampler_InteractionRT);
-
-            CBUFFER_START(InteractionProperties)
-                float4 _InteractionCenterWS;
-                float _InteractionRadius;
-                float _InteractionThickness;
-            CBUFFER_END
-
-            #endif
-
-
-            CBUFFER_START(UnityPerMaterial)
-                float4 _BaseMap_ST;
-                float4 _NormalMap_ST;
-                float _CutOff;
-                float _TransThreshold;
-                float _TransStrength;
-                float _TransSharpness;
-                float _SpecStrength;
-                float _SpecShininess;
-                float _AnimationScale;
-                half4 _TransColor;
-
-                #ifdef USE_INTERACTION
-                float _InteractionEffectiveHeight;
-                float _InteractionStrength;
-                #endif
-            CBUFFER_END
-
-            #ifdef USE_INTERACTION
-            float4 SampleInteractionWS(float3 ws)
-            {
-                float2 uv = (ws.xz - _InteractionCenterWS.xz) / _InteractionRadius / 2 + 0.5f;
-
-                // Edge Fade
-                float2 uvv = 1 - uv;
-                float edge = min(min(uv.x, uvv.x), min(uv.y, uvv.y));
-                float strength = smoothstep(0, 0.05, edge);
-
-                float4 tex = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv, 0);
-
-                float height = _InteractionCenterWS.y + _InteractionThickness * (tex.z - 0.5f);
-
-                return float4(tex.xy, height, strength);
-            }
-
-            #endif
 
 
             Varyings vert(Attributes IN)
@@ -204,40 +149,17 @@ Shader "TuringCat/Nature/Grass"
                 #else
                 OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
                 #endif
-                #ifdef USE_AN
-                float3 anim = vertexAnimation(OUT.positionWS, IN.positionOS, IN.color, _AnimationScale);
-                OUT.positionWS += anim;
+
+                float animScale = 1.0f;
+
+                float3 ws = OUT.positionWS;
+                #ifdef USE_INTERACTION
+                animScale -= pow(ApplyInteraction(OUT.positionWS, IN.positionOS, IN.color.r), 5.0f);
                 #endif
 
-                #ifdef USE_INTERACTION
-                float3 rootWS = TransformObjectToWorld(float3(0, 0, 0));
-                float4 inter = SampleInteractionWS(rootWS);
-
-                float3 bendWS = float3(inter.x, 0, inter.y);
-                float bendLen = length(bendWS);
-
-                float tipW = pow(saturate(IN.color.r), 3.0f);
-
-                float angle = bendLen * _InteractionStrength * tipW * inter.w;
-                angle = min(angle, 1.3f);
-
-                float3 up = float3(0, 1, 0);
-                float3 bendDir = (bendLen > 1e-6) ? (bendWS / bendLen) : float3(0, 0, 0);
-                float3 axis = cross(up, bendDir);
-                float axisLen2 = dot(axis, axis);
-
-                float3 v = OUT.positionWS - rootWS;
-
-                if (axisLen2 > 1e-8 && angle != 0)
-                {
-                    axis *= rsqrt(axisLen2);
-
-                    float s = sin(angle);
-                    float c = cos(angle);
-                    float3 vRot = v * c + cross(axis, v) * s + axis * dot(axis, v) * (1 - c);
-
-                    OUT.positionWS = rootWS + vRot * lerp(1.0f, 0.8f, angle / 1.3f);
-                }
+                #ifdef USE_AN
+                float3 anim = vertexAnimation(ws, IN.positionOS, IN.color, _AnimationScale * animScale);
+                OUT.positionWS += anim;
                 #endif
 
 
@@ -348,55 +270,16 @@ Shader "TuringCat/Nature/Grass"
             #pragma multi_compile_instancing
             #pragma shader_feature USE_BILLBOARD
             #pragma shader_feature USE_INTERACTION
+            #pragma shader_feature USE_AN
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            #include "Common.hlsl"
+            #include "GrassCommon.hlsl"
 
-            TEXTURE2D(_BaseMap);
-            SAMPLER(sampler_BaseMap);
 
             float3 _LightDirection;
             float3 _LightPosition;
 
-            CBUFFER_START(UnityPerMaterial)
-                float4 _BaseMap_ST;
-                float _CutOff;
-                #ifdef USE_INTERACTION
-                float _InteractionEffectiveHeight;
-                float _InteractionStrength;
-                #endif
-            CBUFFER_END
-
-            #ifdef USE_INTERACTION
-            TEXTURE2D(_InteractionRT);
-            SAMPLER(sampler_InteractionRT);
-
-            CBUFFER_START(InteractionProperties)
-                float4 _InteractionCenterWS;
-                float _InteractionRadius;
-                float _InteractionThickness;
-            CBUFFER_END
-
-            #endif
-
-
-            #ifdef USE_INTERACTION
-            float4 SampleInteractionWS(float3 ws)
-            {
-                float2 uv = (ws.xz - _InteractionCenterWS.xz) / _InteractionRadius / 2 + 0.5f;
-
-                // Edge Fade
-                float2 uvv = 1 - uv;
-                float edge = min(min(uv.x, uvv.x), min(uv.y, uvv.y));
-                float strength = smoothstep(0, 0.05, edge);
-
-                float4 tex = SAMPLE_TEXTURE2D_LOD(_InteractionRT, sampler_InteractionRT, uv, 0);
-
-                float height = _InteractionCenterWS.y + _InteractionThickness * (tex.z - 0.5f);
-
-                return float4(tex.xy, height, strength);
-            }
-
-            #endif
 
             struct Attributes
             {
@@ -445,11 +328,16 @@ Shader "TuringCat/Nature/Grass"
                 float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);
                 #endif
 
+                float animScale = 1.0f;
+
+                float3 ws = worldPos;
                 #ifdef USE_INTERACTION
-                float4 inter = SampleInteractionWS(TransformObjectToWorld(float3(0, 0, 0)));
+                animScale -= pow(ApplyInteraction(worldPos, attr.posOS, attr.color.r), 5.0f);
+                #endif
 
-                worldPos.xz += inter.xy * attr.color.r * inter.w * _InteractionStrength;
-
+                #ifdef USE_AN
+                float3 anim = vertexAnimation(ws, attr.posOS, attr.color, _AnimationScale * animScale);
+                worldPos += anim;
                 #endif
 
 

@@ -75,4 +75,4 @@ MonoBehaviour:
     globalTextureName: _InteractionRT
     rtSize: 512
     recoverSpeed: 0.1
-    resistance: 1
+    resistance: 5
