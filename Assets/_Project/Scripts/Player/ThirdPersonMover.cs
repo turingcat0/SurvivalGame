@@ -5,7 +5,11 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(CharacterController))]
 public class ThirdPersonMover : MonoBehaviour
 {
-    [Header("Input")] public InputActionReference moveRef;
+    [Header("Input")]
+    public InputActionReference moveRef;
+    public InputActionReference runRef;
+    public InputActionReference jumpRef;
+
 
     [Header("Refs")] public Transform viewCamera;
     public Animator animator;
@@ -28,20 +32,35 @@ public class ThirdPersonMover : MonoBehaviour
     private float vertVel;
     private CharacterController cc;
 
-    private int velocityID;
+    private int velocityXid;
+    private int velocityYid;
+    private int velocityZid;
+    private int groundedID;
 
     private void Awake()
     {
         cc = GetComponent<CharacterController>();
+        velocityXid = Animator.StringToHash("VelocityX");
+        velocityYid = Animator.StringToHash("VelocityY");
+        velocityZid = Animator.StringToHash("VelocityZ");
+        groundedID = Animator.StringToHash("Grounded");
     }
 
     private void OnEnable()
     {
-        velocityID = Animator.StringToHash("VelocityY");
-
         if (moveRef != null)
         {
             moveRef.action.Enable();
+        }
+
+        if (runRef != null)
+        {
+            runRef.action.Enable();
+        }
+
+        if (jumpRef != null)
+        {
+            jumpRef.action.Enable();
         }
     }
 
@@ -51,10 +70,22 @@ public class ThirdPersonMover : MonoBehaviour
         {
             moveRef.action.Disable();
         }
+
+        if (runRef  != null)
+        {
+            runRef.action.Disable();
+        }
+
+        if (jumpRef != null)
+        {
+            jumpRef.action.Disable();
+        }
     }
 
     public void Update()
     {
+        running = runRef.action.IsPressed();
+
         var wasd = moveRef.action.ReadValue<Vector2>();
         bool hasInput = wasd.magnitude > moveDeadZone * moveDeadZone;
         if (hasInput)
@@ -62,6 +93,11 @@ public class ThirdPersonMover : MonoBehaviour
             wasd = wasd.normalized;
         }
 
+        onGround = cc.isGrounded;
+        if (cc.isGrounded && vertVel < 0f)
+        {
+            vertVel = groundedSnapSpeed;
+        }
         vertVel += gravity * Time.deltaTime;
 
         Vector3 wishDir = Vector3.zero;
@@ -93,8 +129,16 @@ public class ThirdPersonMover : MonoBehaviour
                 Quaternion.RotateTowards(animator.transform.rotation, rot, turnSpeed * Time.deltaTime);
         }
 
-        var motion = horizVel;
-        motion.y = vertVel;
-        cc.Move(motion * Time.deltaTime);
+        var motionWs = horizVel;
+        motionWs.y = vertVel;
+
+        var motionLs = animator.transform.InverseTransformDirection(motionWs);
+
+        animator.SetFloat(velocityXid, motionLs.x);
+        animator.SetFloat(velocityYid, motionLs.y);
+        animator.SetFloat(velocityZid, motionLs.z);
+        animator.SetBool(groundedID, onGround);
+
+        cc.Move(motionWs * Time.deltaTime);
     }
 }

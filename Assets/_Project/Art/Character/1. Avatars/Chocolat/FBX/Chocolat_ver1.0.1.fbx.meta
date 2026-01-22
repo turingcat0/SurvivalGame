@@ -1,7 +1,7 @@
 fileFormatVersion: 2
 guid: 9fe3199427431e146a099534af66a510
 ModelImporter:
-  serializedVersion: 22200
+  serializedVersion: 24200
   internalIDToNameTable: []
   externalObjects:
   - first:
@@ -41,8 +41,6 @@ ModelImporter:
     optimizeGameObjects: 0
     removeConstantScaleCurves: 0
     motionNodeName: 
-    rigImportErrors: 
-    rigImportWarnings: 
     animationImportErrors: 
     animationImportWarnings: 
     animationRetargetingWarnings: 
@@ -83,6 +81,9 @@ ModelImporter:
     maxBonesPerVertex: 4
     minBoneWeight: 0.001
     optimizeBones: 1
+    generateMeshLods: 0
+    meshLodGenerationFlags: 0
+    maximumMeshLod: -1
     meshOptimizationFlags: -1
     indexFormat: 0
     secondaryUVAngleDistortion: 8
@@ -190,11 +191,11 @@ ModelImporter:
     - boneName: Head
       humanName: Head
       limit:
-        min: {x: 0, y: 0, z: 0}
-        max: {x: 0, y: 0, z: 0}
+        min: {x: -45, y: -40, z: -40}
+        max: {x: 45, y: 40, z: 40}
         value: {x: 0, y: 0, z: 0}
         length: 0
-        modified: 0
+        modified: 1
     - boneName: Shoulder.L
       humanName: LeftShoulder
       limit:
@@ -1575,8 +1576,7 @@ ModelImporter:
     - name: Ribbon_L1_end
       parentName: Ribbon_L1
       position: {x: 0.000000012516975, y: 0.033844266, z: 0.0000000166893}
-      rotation: {x: 0.000000014900998, y: -0.000021725886, z: -0.000000007450254,
-        w: 1}
+      rotation: {x: 0.000000014900998, y: -0.000021725886, z: -0.000000007450254, w: 1}
       scale: {x: 1, y: 1, z: 1}
     - name: Ribbon_R1
       parentName: Ribbon_Root
@@ -1601,8 +1601,7 @@ ModelImporter:
     - name: Ribbon_L2.001_end
       parentName: Ribbon_L2.001
       position: {x: 0.00000000461936, y: 0.024359856, z: 0.000000002980232}
-      rotation: {x: 0.000000014901351, y: -0.000029075876, z: 0.0000000065196883,
-        w: 1}
+      rotation: {x: 0.000000014901351, y: -0.000029075876, z: 0.0000000065196883, w: 1}
       scale: {x: 1, y: 1, z: 1}
     - name: Ribbon_R2
       parentName: Ribbon_Root
@@ -1617,8 +1616,7 @@ ModelImporter:
     - name: Ribbon_R2.001_end
       parentName: Ribbon_R2.001
       position: {x: -0.00000000461936, y: 0.024359856, z: 0.000000002980232}
-      rotation: {x: 0.000000014901351, y: 0.000029075876, z: -0.0000000065196883,
-        w: 1}
+      rotation: {x: 0.000000014901351, y: 0.000029075876, z: -0.0000000065196883, w: 1}
       scale: {x: 1, y: 1, z: 1}
     - name: Wing_Root
       parentName: Chest
