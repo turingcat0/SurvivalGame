@@ -5,28 +5,35 @@ using UnityEngine.InputSystem;
 [RequireComponent(typeof(CharacterController))]
 public class ThirdPersonMover : MonoBehaviour
 {
-    [Header("Input")]
-    public InputActionReference moveRef;
+    [Header("Input")] public InputActionReference moveRef;
     public InputActionReference runRef;
     public InputActionReference jumpRef;
+    public InputActionReference crouchRef;
 
 
     [Header("Refs")] public Transform viewCamera;
     public Animator animator;
 
     [Header("Move")] public float walkSpeed = 2.5f;
+    public float runSpeed = 5.0f;
+    public float crouchSpeed = 0.3f;
+    public float crouchRunSpeed = 0.5f;
     public float accel = 0.02f;
     public float decel = 0.05f;
-    public float runSpeed = 5.0f;
     public float moveDeadZone = 0.1f;
 
     public float turnSpeed = 0.08f;
+
+    public float jumpHeight = 1.0f;
+
+    public float crouchHeight = 0.2f;
 
     [Header("Gravity")] public float gravity = -20f;
     public float groundedSnapSpeed = -2f;
 
     private bool onGround;
     private bool running;
+    private bool crouching;
 
     private Vector3 horizVel;
     private float vertVel;
@@ -36,6 +43,7 @@ public class ThirdPersonMover : MonoBehaviour
     private int velocityYid;
     private int velocityZid;
     private int groundedID;
+    private int upRightID;
 
     private void Awake()
     {
@@ -44,6 +52,7 @@ public class ThirdPersonMover : MonoBehaviour
         velocityYid = Animator.StringToHash("VelocityY");
         velocityZid = Animator.StringToHash("VelocityZ");
         groundedID = Animator.StringToHash("Grounded");
+        upRightID = Animator.StringToHash("Upright");
     }
 
     private void OnEnable()
@@ -62,6 +71,11 @@ public class ThirdPersonMover : MonoBehaviour
         {
             jumpRef.action.Enable();
         }
+
+        if (crouchRef != null)
+        {
+            crouchRef.action.Enable();
+        }
     }
 
     private void OnDisable()
@@ -71,7 +85,7 @@ public class ThirdPersonMover : MonoBehaviour
             moveRef.action.Disable();
         }
 
-        if (runRef  != null)
+        if (runRef != null)
         {
             runRef.action.Disable();
         }
@@ -79,6 +93,11 @@ public class ThirdPersonMover : MonoBehaviour
         if (jumpRef != null)
         {
             jumpRef.action.Disable();
+        }
+
+        if (crouchRef != null)
+        {
+            crouchRef.action.Disable();
         }
     }
 
@@ -94,10 +113,19 @@ public class ThirdPersonMover : MonoBehaviour
         }
 
         onGround = cc.isGrounded;
-        if (cc.isGrounded && vertVel < 0f)
+
+        crouching = crouchRef.action.WasPressedThisFrame() ? !crouching : crouching;
+
+        if (onGround && vertVel < 0f)
         {
             vertVel = groundedSnapSpeed;
         }
+
+        if (onGround && jumpRef.action.IsPressed())
+        {
+            vertVel = Mathf.Sqrt(2f * jumpHeight * -gravity);
+        }
+
         vertVel += gravity * Time.deltaTime;
 
         Vector3 wishDir = Vector3.zero;
@@ -117,8 +145,19 @@ public class ThirdPersonMover : MonoBehaviour
                 wishDir.Normalize();
             }
         }
+
         float rate = hasInput ? accel : decel;
-        float targetSpeed = running ?  runSpeed : walkSpeed;
+
+        float targetSpeed;
+
+        if (crouching)
+        {
+            targetSpeed = running ? crouchRunSpeed : crouchSpeed;
+        }
+        else
+        {
+            targetSpeed = running ? runSpeed : walkSpeed;
+        }
 
         horizVel = Vector3.MoveTowards(horizVel, targetSpeed * wishDir, Time.deltaTime * rate);
 
@@ -138,6 +177,7 @@ public class ThirdPersonMover : MonoBehaviour
         animator.SetFloat(velocityYid, motionLs.y);
         animator.SetFloat(velocityZid, motionLs.z);
         animator.SetBool(groundedID, onGround);
+        animator.SetFloat(upRightID, crouching ? crouchHeight : 1.0f);
 
         cc.Move(motionWs * Time.deltaTime);
     }
