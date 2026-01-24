@@ -3,7 +3,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(CharacterController))]
-public class ThirdPersonMover : MonoBehaviour
+public class PlayerController : MonoBehaviour
 {
     [Header("Input")] public InputActionReference moveRef;
     public InputActionReference runRef;
