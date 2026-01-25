@@ -50,10 +50,19 @@ public class FootIKRigging : MonoBehaviour
         anim.SetIKPositionWeight(goal, w);
         anim.SetIKRotationWeight(goal, w);
 
-        if (w <= 0.001f) return;
+
+
 
         Vector3 footPos = anim.GetIKPosition(goal);
         Quaternion footRot = anim.GetIKRotation(goal);
+
+        if (w < 0.998f)
+        {
+            ikPos = footPos;
+            ikRot = footRot;
+            smoothVel = Vector3.zero;
+            return;
+        }
 
         Vector3 origin = footPos + Vector3.up * castUp;
         float dist = castUp + castDown;
@@ -77,6 +86,13 @@ public class FootIKRigging : MonoBehaviour
             float t = 1f - Mathf.Exp(-rotSpeed * Time.deltaTime);
             ikRot = Quaternion.Slerp(ikRot == Quaternion.identity ? footRot : ikRot, desiredRot, t);
 
+            anim.SetIKPosition(goal, ikPos);
+            anim.SetIKRotation(goal, ikRot);
+        }else
+        {
+            ikPos = footPos;
+            ikRot = footRot;
+            smoothVel = Vector3.zero;
             anim.SetIKPosition(goal, ikPos);
             anim.SetIKRotation(goal, ikRot);
         }
