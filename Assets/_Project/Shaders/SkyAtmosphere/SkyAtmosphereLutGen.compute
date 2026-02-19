@@ -1,0 +1,10 @@
+#pragma kernel kComputeTransmittanceLut
+
+
+RWTexture2D<float4> transmittanceLut;
+
+[numthreads(16, 16, 1)]
+void kComputeTransmittanceLut(uint3 id : SV_DispatchThreadID)
+{
+
+}
