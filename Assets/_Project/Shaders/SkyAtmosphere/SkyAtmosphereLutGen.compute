@@ -1,10 +1,63 @@
+#include "SkyAtmosphereCommon.hlsl"
+
 #pragma kernel kComputeTransmittanceLut
 
+const int TRANSMITTANCE_STEPS = 40;
 
+StructuredBuffer<SkyAtmosphereParameters> skyAtmosphereParametersBuffer;
 RWTexture2D<float4> transmittanceLut;
+
+float GetDistanceToBoundary(in SkyAtmosphereParameters skyAtmosphereParameters, float mu, float h)
+{
+    float r = GetAtmosphereBottom(skyAtmosphereParameters) + h;
+    float discriminant = r * r * (mu * mu - 1.0) +
+        GetAtmosphereTop(skyAtmosphereParameters) * GetAtmosphereTop(skyAtmosphereParameters);
+    return -r * mu + discriminant;
+}
+
+
+float3 GetTransmittanceToBoundary(in SkyAtmosphereParameters skyAtmosphereParameters, float mu, float h)
+{
+    float distance = GetDistanceToBoundary(skyAtmosphereParameters, mu, h);
+    float dx = distance / TRANSMITTANCE_STEPS;
+    float r = h + GetAtmosphereBottom(skyAtmosphereParameters);
+
+    float3 result = 0.0f;
+    for (int i = 0; i <= TRANSMITTANCE_STEPS; ++i)
+    {
+        float d_i = i * dx;
+        float r_i = sqrt(d_i * d_i + 2.0 * r * mu * d_i + r * r);
+        float intensity_rayleigh_i = GetRayleighIntensity(skyAtmosphereParameters,
+                                                          r_i - GetAtmosphereBottom(skyAtmosphereParameters));
+        float intensity_mie_i = GetMieIntensity(skyAtmosphereParameters,
+                                                r_i - GetAtmosphereBottom(skyAtmosphereParameters));
+        float intensity_ozone_i = GetOzoneIntensity(skyAtmosphereParameters,
+                                                    r_i - GetAtmosphereBottom(skyAtmosphereParameters));
+        float weight_i = (i == 0 || i == TRANSMITTANCE_STEPS) ? 0.5f : 1.0f;
+        result += skyAtmosphereParameters.rayleighScattering.xyz * intensity_rayleigh_i * weight_i * dx;
+        result += (skyAtmosphereParameters.mieScatteringPacked.xyz + skyAtmosphereParameters.mieAbsorption.xyz) *
+            intensity_mie_i * weight_i * dx;
+        result += skyAtmosphereParameters.ozoneAbsorption.xyz * intensity_ozone_i * weight_i * dx;
+    }
+    return exp(-result);
+}
+
 
 [numthreads(16, 16, 1)]
 void kComputeTransmittanceLut(uint3 id : SV_DispatchThreadID)
 {
+    SkyAtmosphereParameters skyAtmosphereParameters = skyAtmosphereParametersBuffer[0];
 
+    uint2 size;
+    transmittanceLut.GetDimensions(size.x, size.y);
+    if (id.x >= size.x || id.y >= size.y)
+    {
+        return;
+    }
+
+    float2 uv = (float2(id.xy) + 0.5f) / size.xy;
+    float mu = GetUnitRange(uv.u);
+    float h = GetAtmosphereHeight(skyAtmosphereParameters);
+    float3 transmittance = GetTransmittanceToBoundary(skyAtmosphereParameters, mu, h);
+    transmittanceLut[id.xy] = float4(transmittance, 1.0f);
 }

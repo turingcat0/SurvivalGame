@@ -22,7 +22,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
         public float rayleighScaleHeight = 8000.0f;
         public float mieScaleHeight = 1200.0f;
         public float ozoneCenter = 25000f;
-        public float ozoneRadius = 15000f;
+        public float ozoneHalfWidth = 15000f;
 
         // Coefficient
         // All from the paper "A Scalable and Production Ready Sky and Atmosphere Rendering Technique"
