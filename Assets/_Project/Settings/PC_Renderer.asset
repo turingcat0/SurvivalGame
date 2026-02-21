@@ -70,16 +70,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SkyAtmosphereRenderFeature
   m_Active: 1
   settings:
-    bottom: 0
-    top: 0
-    rayleighScaleHeight: 0
-    mieScaleHeight: 0
-    ozoneCenter: 0
-    ozoneRadius: 0
-    rayleighScattering: {r: 0, g: 0, b: 0, a: 0}
-    mieScattering: {r: 0, g: 0, b: 0, a: 0}
-    mieAbsorption: {r: 0, g: 0, b: 0, a: 0}
-    ozoneAbsorption: {r: 0, g: 0, b: 0, a: 0}
+    sun: {fileID: 0}
+    computeShader: {fileID: 7200000, guid: ff4b87d9a5e34e74e9a4d51fdd2858b6, type: 3}
+    bottom: 6360000
+    top: 6420000
+    rayleighScaleHeight: 8000
+    mieScaleHeight: 1200
+    ozoneCenter: 25000
+    ozoneHalfWidth: 15000
+    rayleighScattering: {x: 0.000005802, y: 0.000013558, z: 0.0000331}
+    mieScattering: {x: 0.000003996, y: 0.000003996, z: 0.000003996}
+    mieAbsorption: {x: 0.0000044, y: 0.0000044, z: 0.0000044}
+    ozoneAbsorption: {x: 0.00000065, y: 0.000001881, z: 0.000000085}
+    miePhaseFunctionG: 0.8
 --- !u!114 &7833122117494664109
 MonoBehaviour:
   m_ObjectHideFlags: 0

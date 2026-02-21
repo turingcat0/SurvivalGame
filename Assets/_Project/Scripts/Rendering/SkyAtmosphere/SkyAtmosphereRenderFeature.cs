@@ -1,6 +1,7 @@
 using System;
+using System.Runtime.InteropServices;
 using UnityEngine;
-using UnityEngine.Experimental.GlobalIllumination;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.Rendering.RenderGraphModule;
@@ -12,7 +13,8 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
     [Serializable]
     public class SkyAtmosphereRenderFeatureSettings
     {
-        public DirectionalLight sun;
+        public Light sun;
+        public ComputeShader computeShader;
 
         // Atmosphere Size
         public float bottom = 6360000.0f;
@@ -30,96 +32,155 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
         public Vector3 mieScattering = new Vector3(3.996e-6f, 3.996e-6f, 3.996e-6f);
         public Vector3 mieAbsorption = new Vector3(4.40e-6f, 4.40e-6f, 4.40e-6f);
         public Vector3 ozoneAbsorption = new Vector3(0.650e-6f, 1.881e-6f, 0.085e-6f);
-    }
-
-    class IntensityProfileLayer
-    {
-        public float width;
-        public float expTerm;
-        public float expScale;
-        public float linearTerm;
-        public float constantTerm;
-
-        public IntensityProfileLayer(float width, float expTerm, float expScale, float linearTerm, float constantTerm)
-        {
-            this.width = width;
-            this.expTerm = expTerm;
-            this.expScale = expScale;
-            this.linearTerm = linearTerm;
-            this.constantTerm = constantTerm;
-        }
+        public float miePhaseFunctionG = 0.8f;
     }
 
 
     [SerializeField] SkyAtmosphereRenderFeatureSettings settings;
-    SkyAtmosphereRenderFeaturePass m_ScriptablePass;
+    SkyAtmosphereRenderFeaturePass pass;
 
-    /// <inheritdoc/>
     public override void Create()
     {
-        m_ScriptablePass = new SkyAtmosphereRenderFeaturePass(settings);
+        pass = new SkyAtmosphereRenderFeaturePass(settings);
 
         // Configures where the render pass should be injected.
-        m_ScriptablePass.renderPassEvent = RenderPassEvent.AfterRenderingOpaques;
+        pass.renderPassEvent = RenderPassEvent.BeforeRendering;
     }
 
-    // Here you can inject one or multiple render passes in the renderer.
-    // This method is called when setting up the renderer once per-camera.
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
     {
-        renderer.EnqueuePass(m_ScriptablePass);
+        renderer.EnqueuePass(pass);
     }
 
+    protected override void Dispose(bool disposing)
+    {
+        pass?.Dispose();
+    }
 
     class SkyAtmosphereRenderFeaturePass : ScriptableRenderPass
     {
         readonly SkyAtmosphereRenderFeatureSettings settings;
+
+        private GraphicsBuffer skyAtmosphereParametersBuffer;
+
+        private RTHandle transmittanceLut;
+        private RTHandle multiScatteringLut;
+
+        private const int TransmittanceLutWidth = 256;
+        private const int TransmittanceLutHeight = 64;
 
         public SkyAtmosphereRenderFeaturePass(SkyAtmosphereRenderFeatureSettings settings)
         {
             this.settings = settings;
         }
 
-        // This class stores the data needed by the RenderGraph pass.
-        // It is passed as a parameter to the delegate function that executes the RenderGraph pass.
-        private class PassData
+        private void EnsureResources()
         {
+            int stride = Marshal.SizeOf<SkyAtmosphereBuffer>();
+            skyAtmosphereParametersBuffer ??= new GraphicsBuffer(GraphicsBuffer.Target.Structured, 1, stride);
+
+            transmittanceLut ??= RTHandles.Alloc(
+                TransmittanceLutWidth, TransmittanceLutHeight,
+                enableRandomWrite: true,
+                filterMode: FilterMode.Bilinear,
+                colorFormat: GraphicsFormat.R16G16B16A16_SFloat,
+                // colorFormat: GraphicsFormat.R32G32B32A32_SFloat, //Debug only
+                name: "_TransmittanceLut"
+            );
         }
 
-        // This static method is passed as the RenderFunc delegate to the RenderGraph render pass.
-        // It is used to execute draw commands.
-        static void ExecutePass(PassData data, RasterGraphContext context)
+        private SkyAtmosphereBuffer BuildSkyAtmosphereBuffer()
         {
+            return new SkyAtmosphereBuffer
+            {
+                // TODO: Use real data from settings
+                atmospherePositionPacked = new Vector4(settings.bottom, settings.top, 0, 0),
+                sunParameterPacked = new Vector4(0, 0, 0, 0),
+                densityProfilePacked = new Vector4(1.0f / settings.rayleighScaleHeight, 1.0f / settings.mieScaleHeight,
+                    settings.ozoneCenter, settings.ozoneHalfWidth),
+                rayleighScattering = new Vector4(settings.rayleighScattering.x, settings.rayleighScattering.y,
+                    settings.rayleighScattering.z, 1.0f),
+                mieScatteringPacked = new Vector4(settings.mieScattering.x, settings.mieScattering.y,
+                    settings.mieScattering.z, settings.miePhaseFunctionG),
+                mieAbsorption = settings.mieAbsorption,
+                ozoneAbsorption = settings.ozoneAbsorption,
+            };
         }
 
-        // RecordRenderGraph is where the RenderGraph handle can be accessed, through which render passes can be added to the graph.
-        // FrameData is a context container through which URP resources can be accessed and managed.
+        public void Dispose()
+        {
+            transmittanceLut?.Release();
+            skyAtmosphereParametersBuffer?.Release();
+        }
+
+        private class TransmittanceLutPassData
+        {
+            public ComputeShader shader;
+            public int kernel;
+
+            public TextureHandle transmittanceLut;
+            public BufferHandle skyAtmosphereParameters;
+
+            public int groupX, groupY;
+        }
+
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
-            const string passName = "Render Custom Pass";
+            // 1. Update Atmosphere Buffer
+            EnsureResources();
+            var data = BuildSkyAtmosphereBuffer();
+            skyAtmosphereParametersBuffer.SetData(new[] { data });
 
-            // This adds a raster render pass to the graph, specifying the name and the data type that will be passed to the ExecutePass function.
-            using (var builder = renderGraph.AddRasterRenderPass<PassData>(passName, out var passData))
+            // 2. Import Resources
+            var parameterHandle = renderGraph.ImportBuffer(skyAtmosphereParametersBuffer);
+            var transmittanceLutHandle = renderGraph.ImportTexture(transmittanceLut);
+
+            // 3. Build TransmittanceLUTGen Pass
+            using (var builder =
+                   renderGraph.AddComputePass<TransmittanceLutPassData>("TransmittanceLutGen", out var passData))
             {
-                // Use this scope to set the required inputs and outputs of the pass and to
-                // setup the passData with the required properties needed at pass execution time.
+                // 3.1. Declare Used Resources
+                builder.UseTexture(transmittanceLutHandle, AccessFlags.Write);
+                builder.UseBuffer(parameterHandle, AccessFlags.Read);
 
-                // Make use of frameData to access resources and camera data through the dedicated containers.
-                // Eg:
-                // UniversalCameraData cameraData = frameData.Get<UniversalCameraData>();
-                UniversalResourceData resourceData = frameData.Get<UniversalResourceData>();
+                // 3.2. Prepare Pass Data
+                passData.shader = settings.computeShader;
+                passData.kernel = passData.shader.FindKernel("kComputeTransmittanceLut");
 
-                // Setup pass inputs and outputs through the builder interface.
-                // Eg:
-                // builder.UseTexture(sourceTexture);
-                // TextureHandle destination = UniversalRenderer.CreateRenderGraphTexture(renderGraph, cameraData.cameraTargetDescriptor, "Destination Texture", false);
+                passData.transmittanceLut = transmittanceLutHandle;
+                passData.skyAtmosphereParameters = parameterHandle;
 
-                // This sets the render target of the pass to the active color texture. Change it to your own render target as needed.
-                builder.SetRenderAttachment(resourceData.activeColorTexture, 0);
+                passData.groupX = (TransmittanceLutWidth + 15) / 16;
+                passData.groupY = (TransmittanceLutHeight + 15) / 16;
 
-                // Assigns the ExecutePass function to the render pass delegate. This will be called by the render graph when executing the pass.
-                builder.SetRenderFunc((PassData data, RasterGraphContext context) => ExecutePass(data, context));
+                // 3.3. Set Render Function
+                builder.SetRenderFunc(static (TransmittanceLutPassData data, ComputeGraphContext ctx) =>
+                {
+                    var cmd = ctx.cmd;
+
+                    cmd.SetComputeBufferParam(data.shader, data.kernel, "_SkyAtmosphereParametersBuffer",
+                        data.skyAtmosphereParameters);
+                    cmd.SetComputeTextureParam(data.shader, data.kernel, "_TransmittanceLut",
+                        data.transmittanceLut);
+                    cmd.DispatchCompute(data.shader, data.kernel, data.groupX, data.groupY, 1);
+
+                });
             }
+        }
+
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct SkyAtmosphereBuffer
+        {
+            public Vector4 atmospherePositionPacked; // bottom_radius, top_radius, unused, unused
+            public Vector4 sunParameterPacked; // sunDirectionX, sunDirectionY, sunDirectionZ, sunAngularRadius (Y-up)
+
+            public Vector4 densityProfilePacked; // rayleigh_expScale, mie_expScale, ozone_center, ozone_half_width
+
+            public Vector4 rayleighScattering;
+            public Vector4 mieScatteringPacked; // mieScatteringR, mieScatteringG, mieScatteringB, mie_phase_function_g
+            public Vector4 mieAbsorption;
+            public Vector4 ozoneAbsorption;
         }
     }
 }
