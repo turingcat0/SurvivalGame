@@ -15,6 +15,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
     {
         public Light sun;
         public ComputeShader computeShader;
+        public Color groundAlbedo = new Color(0.3f, 0.3f, 0.3f, 1.0f);
 
         // Atmosphere Size
         public float bottom = 6360000.0f;
@@ -33,6 +34,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
         public Vector3 mieAbsorption = new Vector3(4.40e-6f, 4.40e-6f, 4.40e-6f);
         public Vector3 ozoneAbsorption = new Vector3(0.650e-6f, 1.881e-6f, 0.085e-6f);
         public float miePhaseFunctionG = 0.8f;
+        public float sunAngularRadius = 0.00935f / 2.0f;
     }
 
 
@@ -68,6 +70,8 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
 
         private const int TransmittanceLutWidth = 256;
         private const int TransmittanceLutHeight = 64;
+        private const int MultiScatteringLutWidth = 32;
+        private const int MultiScatteringLutHeight = 32;
 
         public SkyAtmosphereRenderFeaturePass(SkyAtmosphereRenderFeatureSettings settings)
         {
@@ -87,6 +91,15 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 // colorFormat: GraphicsFormat.R32G32B32A32_SFloat, //Debug only
                 name: "_TransmittanceLut"
             );
+
+            multiScatteringLut ??= RTHandles.Alloc(
+                MultiScatteringLutWidth, MultiScatteringLutHeight,
+                enableRandomWrite: true,
+                filterMode: FilterMode.Bilinear,
+                // colorFormat: GraphicsFormat.R16G16B16A16_SFloat,
+                colorFormat: GraphicsFormat.R32G32B32A32_SFloat, //Debug only
+                name: "_MultiScatteringLut"
+            );
         }
 
         private SkyAtmosphereBuffer BuildSkyAtmosphereBuffer()
@@ -95,7 +108,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             {
                 // TODO: Use real data from settings
                 atmospherePositionPacked = new Vector4(settings.bottom, settings.top, 0, 0),
-                sunParameterPacked = new Vector4(0, 0, 0, 0),
+                sunParameterPacked = new Vector4(0, 0, 0, settings.sunAngularRadius),
                 densityProfilePacked = new Vector4(1.0f / settings.rayleighScaleHeight, 1.0f / settings.mieScaleHeight,
                     settings.ozoneCenter, settings.ozoneHalfWidth),
                 rayleighScattering = new Vector4(settings.rayleighScattering.x, settings.rayleighScattering.y,
@@ -104,6 +117,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                     settings.mieScattering.z, settings.miePhaseFunctionG),
                 mieAbsorption = settings.mieAbsorption,
                 ozoneAbsorption = settings.ozoneAbsorption,
+                groundAlbedo = settings.groundAlbedo
             };
         }
 
@@ -124,6 +138,18 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             public int groupX, groupY;
         }
 
+        private class MultiScatteringLutPassData
+        {
+            public ComputeShader shader;
+            public int kernel;
+
+            public TextureHandle transmittanceLut;
+            public TextureHandle multiScatteringLut;
+            public BufferHandle skyAtmosphereParameters;
+
+            public int groupX, groupY;
+        }
+
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             // 1. Update Atmosphere Buffer
@@ -134,6 +160,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             // 2. Import Resources
             var parameterHandle = renderGraph.ImportBuffer(skyAtmosphereParametersBuffer);
             var transmittanceLutHandle = renderGraph.ImportTexture(transmittanceLut);
+            var multiScatteringLutHandle = renderGraph.ImportTexture(multiScatteringLut);
 
             // 3. Build TransmittanceLUTGen Pass
             using (var builder =
@@ -160,11 +187,40 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
 
                     cmd.SetComputeBufferParam(data.shader, data.kernel, "_SkyAtmosphereParametersBuffer",
                         data.skyAtmosphereParameters);
-                    cmd.SetComputeTextureParam(data.shader, data.kernel, "_TransmittanceLut",
+                    cmd.SetComputeTextureParam(data.shader, data.kernel, "_TransmittanceLutUAV",
                         data.transmittanceLut);
                     cmd.DispatchCompute(data.shader, data.kernel, data.groupX, data.groupY, 1);
 
                 });
+            }
+
+            // 4. Build MultiScatteringLUTGen Pass
+            using (var builder = renderGraph.AddComputePass<MultiScatteringLutPassData>("MultiScatteringLUTGen",  out var passData))
+            {
+                // 4.1. Declare Used Resources
+                builder.UseTexture(transmittanceLutHandle, AccessFlags.Read);
+                builder.UseTexture(multiScatteringLutHandle, AccessFlags.Write);
+                builder.UseBuffer(parameterHandle, AccessFlags.Read);
+
+                // 4.2 Prepare Pass Data
+                passData.shader = settings.computeShader;
+                passData.kernel = passData.shader.FindKernel("kComputeMultiScatteringLut");
+                passData.transmittanceLut = transmittanceLutHandle;
+                passData.skyAtmosphereParameters = parameterHandle;
+                passData.multiScatteringLut = multiScatteringLutHandle;
+                passData.groupX = (MultiScatteringLutWidth + 7) / 8;
+                passData.groupY = (MultiScatteringLutHeight + 7) / 8;
+
+                // 4.3. Set RenderFunc
+                builder.SetRenderFunc(static (MultiScatteringLutPassData data, ComputeGraphContext ctx) =>
+                {
+                    var cmd = ctx.cmd;
+                    cmd.SetComputeBufferParam(data.shader, data.kernel, "_SkyAtmosphereParametersBuffer",data.skyAtmosphereParameters);
+                    cmd.SetComputeTextureParam(data.shader, data.kernel, "_TransmittanceLut", data.transmittanceLut);
+                    cmd.SetComputeTextureParam(data.shader, data.kernel, "_MultiScatteringLutUAV", data.multiScatteringLut);
+                    cmd.DispatchCompute(data.shader, data.kernel, data.groupX, data.groupY, 1);
+                });
+
             }
         }
 
@@ -181,6 +237,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             public Vector4 mieScatteringPacked; // mieScatteringR, mieScatteringG, mieScatteringB, mie_phase_function_g
             public Vector4 mieAbsorption;
             public Vector4 ozoneAbsorption;
+            public Vector4 groundAlbedo;
         }
     }
 }

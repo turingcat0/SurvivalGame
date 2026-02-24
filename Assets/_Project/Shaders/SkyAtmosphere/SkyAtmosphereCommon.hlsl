@@ -57,6 +57,7 @@
 
 #ifndef SKY_ATMOSPHERE_COMMON_H
 #define SKY_ATMOSPHERE_COMMON_H
+#include "../Common.hlsl"
 
 struct SkyAtmosphereParameters
 {
@@ -69,8 +70,8 @@ struct SkyAtmosphereParameters
     float4 mieScatteringPacked; // mieScatteringR, mieScatteringG, mieScatteringB, mie_phase_function_g
     float4 mieAbsorption;
     float4 ozoneAbsorption;
+    float4 groundAlbedo;
 };
-
 
 
 float GetRayleighIntensity(in SkyAtmosphereParameters skyAtmosphere, in float altitude)
@@ -83,29 +84,25 @@ float GetMieIntensity(in SkyAtmosphereParameters skyAtmosphere, in float altitud
     return exp(-altitude * skyAtmosphere.densityProfilePacked.y);
 }
 
+float GetPhaseG(in SkyAtmosphereParameters skyAtmosphere)
+{
+    return skyAtmosphere.mieScatteringPacked.w;
+}
 float GetOzoneIntensity(in SkyAtmosphereParameters skyAtmosphere, in float altitude)
 {
     return max(0, 1 - abs(altitude - skyAtmosphere.densityProfilePacked.z) / skyAtmosphere.densityProfilePacked.w);
 }
 
-// Remap u from [0, 1] to [-1, 1]
-float GetUnitRange(float u)
+float3 GetGroundAlbedo(in SkyAtmosphereParameters skyAtmosphere)
 {
-    return (u - 0.5f) * 2;
-}
-static const float kEps = 1e-6;
-
-// [-1,1] clamp
-float ClampCosine(float x)
-{
-    return clamp(x, -1.0, 1.0);
+    return skyAtmosphere.groundAlbedo.xyz;
 }
 
-// sqrt(max(x,0))
-float SafeSqrt(float x)
+float GetSunAngular(in SkyAtmosphereParameters skyAtmosphere)
 {
-    return sqrt(max(x, 0.0));
+    return skyAtmosphere.sunParameterPacked.w;
 }
+
 
 float GetTextureCoordFromUnitRange(float x, int textureSize)
 {
@@ -124,6 +121,14 @@ float DistanceToTopAtmosphereBoundary(float topRadius, float r, float mu)
     float discriminant = r * r * (mu * mu - 1.0) + topRadius * topRadius;
     return max(-r * mu + SafeSqrt(discriminant), 0.0);
 }
+
+float DistanceToBottomAtmosphereBoundary(float bottomRadius, float r, float mu)
+{
+    float discriminant = r * r * (mu * mu - 1.0) +
+        bottomRadius * bottomRadius;
+    return max(-r * mu - SafeSqrt(discriminant), 0.0);
+}
+
 // (r, mu) -> uv
 float2 GetTransmittanceTextureUvFromRMu(
     float bottomRadius, float topRadius,
@@ -144,13 +149,13 @@ float2 GetTransmittanceTextureUvFromRMu(
     float inv = 1.0 / max(d_max - d_min, kEps);
 
     float x_mu = (d - d_min) * inv;
-    float x_r  = rho / max(H, kEps);
+    float x_r = rho / max(H, kEps);
 
     x_mu = saturate(x_mu);
-    x_r  = saturate(x_r);
+    x_r = saturate(x_r);
 
     float u = GetTextureCoordFromUnitRange(x_mu, transmittanceWidth);
-    float v = GetTextureCoordFromUnitRange(x_r,  transmittanceHeight);
+    float v = GetTextureCoordFromUnitRange(x_r, transmittanceHeight);
     return float2(u, v);
 }
 
@@ -162,10 +167,10 @@ void GetRMuFromTransmittanceTextureUv(
     out float r, out float mu)
 {
     float x_mu = GetUnitRangeFromTextureCoord(uv.x, transmittanceWidth);
-    float x_r  = GetUnitRangeFromTextureCoord(uv.y, transmittanceHeight);
+    float x_r = GetUnitRangeFromTextureCoord(uv.y, transmittanceHeight);
 
     x_mu = saturate(x_mu);
-    x_r  = saturate(x_r);
+    x_r = saturate(x_r);
 
     float H = SafeSqrt(topRadius * topRadius - bottomRadius * bottomRadius);
 
@@ -192,6 +197,7 @@ float GetAtmosphereBottom(in SkyAtmosphereParameters skyAtmosphere)
 {
     return skyAtmosphere.atmospherePositionPacked.x;
 }
+
 float GetAtmosphereTop(in SkyAtmosphereParameters skyAtmosphere)
 {
     return skyAtmosphere.atmospherePositionPacked.y;
@@ -203,6 +209,34 @@ float GetAtmosphereHeight(in SkyAtmosphereParameters skyAtmosphere)
     return skyAtmosphere.atmospherePositionPacked.y - skyAtmosphere.atmospherePositionPacked.x;
 }
 
+float3 FibonacciSphereDir(uint i, uint N)
+{
+    // i in [0, N-1]
+    float phi = 3.14159265f * (3.0f - sqrt(5.0f)); // golden angle ~2.399963...
+    float y = 1.0f - 2.0f * ((i + 0.5f) / N); // (-1, 1)
+    float r = sqrt(max(0.0f, 1.0f - y * y));
+    float theta = phi * i;
 
+    float x = cos(theta) * r;
+    float z = sin(theta) * r;
+    return float3(x, y, z);
+}
+
+bool RayIntersectsGround(in SkyAtmosphereParameters skyAtmosphere, float r, float mu)
+{
+    return mu < 0.0 && r * r * (mu * mu - 1.0) +
+        GetAtmosphereBottom(skyAtmosphere) * GetAtmosphereBottom(skyAtmosphere) >= 0.0;
+}
+
+float RayleighPhase(float cosTheta)
+{
+    return (3.0f / (16.0f * PI)) * (1 + cosTheta * cosTheta);
+}
+
+float MiePhase(float cosTheta, float g)
+{
+    return (3.0f / (8.0f * PI)) * (1 - g * g) * (1 + cosTheta * cosTheta) / ((2 + g * g) * pow(
+        1 + g * g - 2 * g * cosTheta, 1.5f));
+}
 
 #endif

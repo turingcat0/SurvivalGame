@@ -1,10 +1,21 @@
 #include "SkyAtmosphereCommon.hlsl"
 
 #pragma kernel kComputeTransmittanceLut
+#pragma kernel kComputeMultiScatteringLut
+
+
 #define TRANSMITTANCE_STEPS 40
+#define MULTI_SCATTERING_RAYS 64
+#define MULTI_SCATTERING_STEPS 20
 
 StructuredBuffer<SkyAtmosphereParameters> _SkyAtmosphereParametersBuffer;
-RWTexture2D<float4> _TransmittanceLut;
+RWTexture2D<float4> _TransmittanceLutUAV;
+RWTexture2D<float4> _MultiScatteringLutUAV;
+
+Texture2D<float4> _TransmittanceLut;
+SamplerState sampler_TransmittanceLut;
+Texture2D<float4> _MultiScatteringLut;
+SamplerState sampler_MultiScatteringLut;
 
 
 float3 GetTransmittanceToBoundary(in SkyAtmosphereParameters skyAtmosphereParameters, float mu, float r)
@@ -34,13 +45,55 @@ float3 GetTransmittanceToBoundary(in SkyAtmosphereParameters skyAtmosphereParame
 }
 
 
+// Assumes the ray does not hit the ground
+float3 GetTransmittanceToTopBoundary(in SkyAtmosphereParameters skyAtmosphere,
+                                     float r, float mu)
+{
+    uint w, h;
+    _TransmittanceLut.GetDimensions(w, h);
+    float2 uv = GetTransmittanceTextureUvFromRMu(GetAtmosphereBottom(skyAtmosphere), GetAtmosphereTop(skyAtmosphere), r,
+                                                 mu, w, h);
+    return _TransmittanceLut.SampleLevel(sampler_TransmittanceLut, uv, 0).xyz;
+}
+
+
+float3 GetTransmittance(in SkyAtmosphereParameters skyAtmosphere, float r,
+                        float mu, float length, bool intersectsGround)
+{
+    float r_d = sqrt(length * length + 2.0 * r * mu * length + r * r);
+    float mu_d = (r * mu + length) / r_d;
+    if (intersectsGround)
+    {
+        return saturate(
+            GetTransmittanceToTopBoundary(skyAtmosphere, r_d, -mu_d) / GetTransmittanceToTopBoundary(
+                skyAtmosphere, r, -mu));
+    }
+    else
+    {
+        return saturate(
+            GetTransmittanceToTopBoundary(skyAtmosphere, r, mu) / GetTransmittanceToTopBoundary(
+                skyAtmosphere, r_d, mu_d));
+    }
+}
+
+float3 GetTransmittanceToSun(in SkyAtmosphereParameters skyAtmosphere, float r,
+                             float mu)
+{
+    float sinThetaH = saturate(GetAtmosphereBottom(skyAtmosphere) / r);
+    float cosThetaH = -sqrt(1 - sinThetaH * sinThetaH);
+    float visibility = smoothstep(-sinThetaH * GetSunAngular(skyAtmosphere), sinThetaH * GetSunAngular(skyAtmosphere),
+                                  mu - cosThetaH);
+    return GetTransmittanceToTopBoundary(skyAtmosphere, r, mu) * visibility;
+}
+
+
 [numthreads(16, 16, 1)]
 void kComputeTransmittanceLut(uint3 id : SV_DispatchThreadID)
 {
     SkyAtmosphereParameters skyAtmosphereParameters = _SkyAtmosphereParametersBuffer[0];
 
     uint2 size;
-    _TransmittanceLut.GetDimensions(size.x, size.y);
+    _TransmittanceLutUAV.GetDimensions(size.x, size.y);
     if (id.x >= size.x || id.y >= size.y)
     {
         return;
@@ -54,5 +107,64 @@ void kComputeTransmittanceLut(uint3 id : SV_DispatchThreadID)
         r, mu);
 
     float3 transmittance = GetTransmittanceToBoundary(skyAtmosphereParameters, mu, r);
-    _TransmittanceLut[id.xy] = float4(transmittance, 1.0f);
+    _TransmittanceLutUAV[id.xy] = float4(transmittance, 1.0f);
+}
+
+[numthreads(8, 8, 1)]
+void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
+{
+    uint2 size;
+    _MultiScatteringLutUAV.GetDimensions(size.x, size.y);
+    if (id.x >= size.x || id.y >= size.y)
+    {
+        return;
+    }
+    SkyAtmosphereParameters skyAtmosphereParameters = _SkyAtmosphereParametersBuffer[0];
+    float2 uv = (id.xy + 0.5f) / size.xy;
+    float r = GetAtmosphereBottom(skyAtmosphereParameters) + uv.y * GetAtmosphereHeight(skyAtmosphereParameters);
+    float cosTheta = GetUnitRange(uv.x);
+
+    float3 l2Scattering = 0.0f;
+    float3 ms = 0.0f;
+    const float phaseL2 = 1 / (4 * PI);
+
+
+    for (int rayIndex = 0; rayIndex < MULTI_SCATTERING_RAYS; ++rayIndex)
+    {
+        float3 ray = FibonacciSphereDir(rayIndex, MULTI_SCATTERING_RAYS);
+        float r_mu = ray.y;
+        bool intersects = RayIntersectsGround(skyAtmosphereParameters, r, r_mu);
+        float distance = intersects
+                             ? DistanceToBottomAtmosphereBoundary(GetAtmosphereBottom(skyAtmosphereParameters), r, r_mu)
+                             : DistanceToTopAtmosphereBoundary(GetAtmosphereTop(skyAtmosphereParameters), r, r_mu);
+        float dx = distance / MULTI_SCATTERING_STEPS;
+        for (int i = 0; i <= MULTI_SCATTERING_STEPS; ++i)
+        {
+            float d_i = i * dx;
+            float r_i = sqrt(d_i * d_i + 2.0 * r * r_mu * d_i + r * r);
+            float h_i = r_i - GetAtmosphereBottom(skyAtmosphereParameters);
+
+            float3 transmittance = GetTransmittance(skyAtmosphereParameters, r_i, r_mu, d_i,
+                                                    intersects);
+            float3 sunPower = GetTransmittanceToSun(skyAtmosphereParameters, r_i, cosTheta);
+            float weight = i == 0 || i == MULTI_SCATTERING_STEPS ? 0.5 : 1;
+
+            float3 rayleighScattering = GetRayleighIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.
+                rayleighScattering.xyz;
+            float3 mieScattering = GetMieIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.
+                mieScatteringPacked.xyz;
+
+            l2Scattering += transmittance * sunPower * (rayleighScattering + mieScattering) * phaseL2 * weight * dx;
+            ms += transmittance * (rayleighScattering + mieScattering) * weight * dx;
+        }
+        // if (intersects)
+        // {
+        //     l2Scattering += GetTransmittanceToSun(skyAtmosphereParameters, GetAtmosphereBottom(skyAtmosphereParameters), cosTheta) * GetTransmittance(skyAtmosphereParameters, r, r_mu, distance, true) * GetGroundAlbedo(skyAtmosphereParameters) * (1 / PI) ;
+        // }
+    }
+    l2Scattering *= phaseL2 * 4 * PI / MULTI_SCATTERING_RAYS;
+    ms *= phaseL2 * 4 * PI / MULTI_SCATTERING_RAYS;
+    float3 fMS = 1 / (1 - ms);
+    float3 result = l2Scattering * fMS;
+    _MultiScatteringLutUAV[id.xy] = float4(result, 1.0f);
 }
