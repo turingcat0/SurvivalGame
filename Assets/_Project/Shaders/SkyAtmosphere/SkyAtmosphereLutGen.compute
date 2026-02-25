@@ -123,6 +123,7 @@ void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
     float2 uv = (id.xy + 0.5f) / size.xy;
     float r = GetAtmosphereBottom(skyAtmosphereParameters) + uv.y * GetAtmosphereHeight(skyAtmosphereParameters);
     float cosTheta = GetUnitRange(uv.x);
+    float3 sunRay = float3(sqrt(1 - cosTheta * cosTheta), cosTheta, 0);
 
     float3 l2Scattering = 0.0f;
     float3 ms = 0.0f;
@@ -131,6 +132,7 @@ void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
 
     for (int rayIndex = 0; rayIndex < MULTI_SCATTERING_RAYS; ++rayIndex)
     {
+        float3 pos = float3(0, r, 0);
         float3 ray = FibonacciSphereDir(rayIndex, MULTI_SCATTERING_RAYS);
         float r_mu = ray.y;
         bool intersects = RayIntersectsGround(skyAtmosphereParameters, r, r_mu);
@@ -141,12 +143,15 @@ void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
         for (int i = 0; i <= MULTI_SCATTERING_STEPS; ++i)
         {
             float d_i = i * dx;
-            float r_i = sqrt(d_i * d_i + 2.0 * r * r_mu * d_i + r * r);
+            float3 pos_i = pos + d_i * ray;
+            float r_i = length(pos_i);
+            float mu_i = dot(ray, pos_i) / r_i;
+            float sun_mu_i = dot(sunRay, pos_i) / r_i;
             float h_i = r_i - GetAtmosphereBottom(skyAtmosphereParameters);
 
-            float3 transmittance = GetTransmittance(skyAtmosphereParameters, r_i, r_mu, d_i,
+            float3 transmittance = GetTransmittance(skyAtmosphereParameters, r_i, mu_i, d_i,
                                                     intersects);
-            float3 sunPower = GetTransmittanceToSun(skyAtmosphereParameters, r_i, cosTheta);
+            float3 sunPower = GetTransmittanceToSun(skyAtmosphereParameters, r_i, sun_mu_i);
             float weight = i == 0 || i == MULTI_SCATTERING_STEPS ? 0.5 : 1;
 
             float3 rayleighScattering = GetRayleighIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.
@@ -157,10 +162,17 @@ void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
             l2Scattering += transmittance * sunPower * (rayleighScattering + mieScattering) * phaseL2 * weight * dx;
             ms += transmittance * (rayleighScattering + mieScattering) * weight * dx;
         }
-        // if (intersects)
-        // {
-        //     l2Scattering += GetTransmittanceToSun(skyAtmosphereParameters, GetAtmosphereBottom(skyAtmosphereParameters), cosTheta) * GetTransmittance(skyAtmosphereParameters, r, r_mu, distance, true) * GetGroundAlbedo(skyAtmosphereParameters) * (1 / PI) ;
-        // }
+        if (intersects)
+        {
+            float3 hitPos = pos + ray * distance;
+            float hitR = GetAtmosphereBottom(skyAtmosphereParameters);
+            float nDl = saturate(dot(sunRay, hitPos) / hitR);
+            float3 transmittanceToSun = GetTransmittanceToSun(skyAtmosphereParameters, hitR, nDl);
+            float3 transmittance = GetTransmittance(skyAtmosphereParameters, r, r_mu, distance, intersects);
+            float3 albedo = GetGroundAlbedo(skyAtmosphereParameters);
+
+            l2Scattering += albedo * transmittanceToSun * nDl * transmittance / PI;
+        }
     }
     l2Scattering *= phaseL2 * 4 * PI / MULTI_SCATTERING_RAYS;
     ms *= phaseL2 * 4 * PI / MULTI_SCATTERING_RAYS;
