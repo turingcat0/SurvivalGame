@@ -2,15 +2,18 @@
 
 #pragma kernel kComputeTransmittanceLut
 #pragma kernel kComputeMultiScatteringLut
+#pragma kernel kComputeSkyViewLut
 
 
 #define TRANSMITTANCE_STEPS 40
 #define MULTI_SCATTERING_RAYS 64
 #define MULTI_SCATTERING_STEPS 20
+#define SKY_VIEW_STEPS 30
 
 StructuredBuffer<SkyAtmosphereParameters> _SkyAtmosphereParametersBuffer;
 RWTexture2D<float4> _TransmittanceLutUAV;
 RWTexture2D<float4> _MultiScatteringLutUAV;
+RWTexture2D<float4> _SkyViewLutUAV;
 
 Texture2D<float4> _TransmittanceLut;
 SamplerState sampler_TransmittanceLut;
@@ -84,6 +87,13 @@ float3 GetTransmittanceToSun(in SkyAtmosphereParameters skyAtmosphere, float r,
     float visibility = smoothstep(-sinThetaH * GetSunAngular(skyAtmosphere), sinThetaH * GetSunAngular(skyAtmosphere),
                                   mu - cosThetaH);
     return GetTransmittanceToTopBoundary(skyAtmosphere, r, mu) * visibility;
+}
+
+float3 GetMultiScattering(in SkyAtmosphereParameters skyAtmosphere, float r, float mu)
+{
+    float u = UnitRangeToUV(mu);
+    float v = (r - GetAtmosphereBottom(skyAtmosphere)) / GetAtmosphereHeight(skyAtmosphere);
+    return _MultiScatteringLut.SampleLevel(sampler_MultiScatteringLut, float2(u, v), 0).xyz;
 }
 
 
@@ -179,4 +189,64 @@ void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
     float3 fMS = 1 / (1 - ms);
     float3 result = l2Scattering * fMS;
     _MultiScatteringLutUAV[id.xy] = float4(result, 1.0f);
+}
+
+[numthreads(8, 8, 1)]
+void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
+{
+    uint2 size;
+    _SkyViewLutUAV.GetDimensions(size.x, size.y);
+    if (id.x >= size.x || id.y >= size.y)
+    {
+        return;
+    }
+    SkyAtmosphereParameters skyAtmosphereParameters = _SkyAtmosphereParametersBuffer[0];
+    float2 uv = (id.xy + 0.5f) / size.xy;
+    float bottom = GetAtmosphereBottom(skyAtmosphereParameters);
+    float top = GetAtmosphereTop(skyAtmosphereParameters);
+    float height = GetCameraY(skyAtmosphereParameters);
+    float azimuth = (uv.x - 0.5f) * 2.0f * PI;
+    float mu = uv.y * 2.0f - 1.0f; // Linear mapping for view zenith cosine
+    float sinTheta = sqrt(saturate(1.0f - mu * mu));
+
+    float3 ray = float3(sinTheta * cos(azimuth), mu, sinTheta * sin(azimuth));
+    float3 pos = float3(0, height + bottom, 0);
+    float sunAzimuth = skyAtmosphereParameters.sunParameterPacked.x;
+    float3 sunRay = float3(sin(sunAzimuth), -cos(sunAzimuth), 0);
+
+    float3 finalColor = float3(0, 0, 0);
+
+    bool intersects = RayIntersectsGround(skyAtmosphereParameters, pos.y, mu);
+    float distance = intersects
+                         ? DistanceToBottomAtmosphereBoundary(bottom, pos.y, mu)
+                         : DistanceToTopAtmosphereBoundary(top, pos.y, mu);
+    float dx = distance / SKY_VIEW_STEPS;
+
+    float cosTheta = dot(ray, sunRay);
+    float phaseRayleigh = RayleighPhase(cosTheta);
+    float phaseMie = MiePhase(cosTheta, skyAtmosphereParameters.mieScatteringPacked.w);
+
+    for (int i = 0; i <= SKY_VIEW_STEPS; ++i)
+    {
+        float3 pos_i = pos + ray * dx * i;
+        float r_i = length(pos_i);
+        float sun_mu_i = dot(sunRay, pos_i) / r_i;
+        float3 transmittance_i = GetTransmittance(skyAtmosphereParameters, pos.y, mu, dx * i, intersects);
+
+        float3 transmittanceToSun_i = GetTransmittanceToSun(skyAtmosphereParameters, r_i, sun_mu_i);
+        float3 rayleighIntensity = GetRayleighIntensity(skyAtmosphereParameters, r_i - bottom) * skyAtmosphereParameters.
+            rayleighScattering.
+            xyz;
+        float3 mieIntensity = GetMieIntensity(skyAtmosphereParameters, r_i - bottom) * skyAtmosphereParameters.
+            mieScatteringPacked.xyz;
+        float3 singleScattering_i = (rayleighIntensity * phaseRayleigh + mieIntensity * phaseMie) *
+            transmittanceToSun_i;
+
+        float3 multiScattering_i = GetMultiScattering(skyAtmosphereParameters, r_i, sun_mu_i) * (rayleighIntensity +
+            mieIntensity);
+
+        float weight = (i == 0 || i == SKY_VIEW_STEPS) ? 0.5f : 1.0f;
+        finalColor += transmittance_i * (singleScattering_i + multiScattering_i) * dx * weight;
+    }
+    _SkyViewLutUAV[id.xy] = float4(finalColor, 1.0f);
 }

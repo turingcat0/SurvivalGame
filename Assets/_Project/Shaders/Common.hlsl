@@ -7,6 +7,11 @@ float GetUnitRange(float u)
     return (u - 0.5f) * 2;
 }
 
+float UnitRangeToUV(float unit)
+{
+    return (unit + 1) / 2.f;
+}
+
 // [-1,1] clamp
 float ClampCosine(float x)
 {

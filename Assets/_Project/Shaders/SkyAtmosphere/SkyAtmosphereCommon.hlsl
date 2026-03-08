@@ -62,7 +62,7 @@
 struct SkyAtmosphereParameters
 {
     float4 atmospherePositionPacked; // bottom_radius, top_radius, unused, unused
-    float4 sunParameterPacked; // sunDirectionX, sunDirectionY, sunDirectionZ, sunAngularRadius (Y-up)
+    float4 sunParameterPacked; // sunAzimuth, camY, unused, sunAngularRadius (Y-up)
 
     float4 densityProfilePacked; // rayleigh_expScale, mie_expScale, ozone_center, ozone_half_width
 
@@ -103,6 +103,10 @@ float GetSunAngular(in SkyAtmosphereParameters skyAtmosphere)
     return skyAtmosphere.sunParameterPacked.w;
 }
 
+float GetCameraY(in SkyAtmosphereParameters skyAtmosphere)
+{
+    return skyAtmosphere.sunParameterPacked.y;
+}
 
 float GetTextureCoordFromUnitRange(float x, int textureSize)
 {
