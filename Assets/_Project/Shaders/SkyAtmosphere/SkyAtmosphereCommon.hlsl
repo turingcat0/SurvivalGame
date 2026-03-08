@@ -61,8 +61,8 @@
 
 struct SkyAtmosphereParameters
 {
-    float4 atmospherePositionPacked; // bottom_radius, top_radius, unused, unused
-    float4 sunParameterPacked; // sunAzimuth, camY, unused, sunAngularRadius (Y-up)
+    float4 atmospherePositionPacked; // bottom_radius, top_radius, camY, sunPower
+    float4 sunParameterPacked; // sunDirX, sunDirY, sunDirZ, sunAngularRadius (Y-up)
 
     float4 densityProfilePacked; // rayleigh_expScale, mie_expScale, ozone_center, ozone_half_width
 
@@ -103,9 +103,14 @@ float GetSunAngular(in SkyAtmosphereParameters skyAtmosphere)
     return skyAtmosphere.sunParameterPacked.w;
 }
 
+float GetSunPower(in SkyAtmosphereParameters skyAtmosphere)
+{
+    return skyAtmosphere.atmospherePositionPacked.w;
+}
+
 float GetCameraY(in SkyAtmosphereParameters skyAtmosphere)
 {
-    return skyAtmosphere.sunParameterPacked.y;
+    return skyAtmosphere.atmospherePositionPacked.z;
 }
 
 float GetTextureCoordFromUnitRange(float x, int textureSize)
@@ -131,6 +136,17 @@ float DistanceToBottomAtmosphereBoundary(float bottomRadius, float r, float mu)
     float discriminant = r * r * (mu * mu - 1.0) +
         bottomRadius * bottomRadius;
     return max(-r * mu - SafeSqrt(discriminant), 0.0);
+}
+
+float GetSkyViewTextureVFromL(float l)
+{
+    return 0.5f + 0.5f * sign(l) * sqrt(abs(l) / (PI / 2));
+}
+
+float GetSkyViewTextureLFromV(float v)
+{
+    float v_prime = v * 2.0f - 1.0f;
+    return sign(v_prime) * (v_prime * v_prime) * (PI / 2.0f);
 }
 
 // (r, mu) -> uv

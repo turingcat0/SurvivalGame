@@ -70,9 +70,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SkyAtmosphereRenderFeature
   m_Active: 1
   settings:
-    sun: {fileID: 0}
     computeShader: {fileID: 7200000, guid: ff4b87d9a5e34e74e9a4d51fdd2858b6, type: 3}
     groundAlbedo: {r: 0.1, g: 0.1, b: 0.1, a: 1}
+    sunPower: 10
     bottom: 6360000
     top: 6420000
     rayleighScaleHeight: 8000

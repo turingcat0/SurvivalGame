@@ -206,13 +206,12 @@ void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
     float top = GetAtmosphereTop(skyAtmosphereParameters);
     float height = GetCameraY(skyAtmosphereParameters);
     float azimuth = (uv.x - 0.5f) * 2.0f * PI;
-    float mu = uv.y * 2.0f - 1.0f; // Linear mapping for view zenith cosine
+    float mu = GetSkyViewTextureLFromV(uv.y);
     float sinTheta = sqrt(saturate(1.0f - mu * mu));
 
     float3 ray = float3(sinTheta * cos(azimuth), mu, sinTheta * sin(azimuth));
     float3 pos = float3(0, height + bottom, 0);
-    float sunAzimuth = skyAtmosphereParameters.sunParameterPacked.x;
-    float3 sunRay = float3(sin(sunAzimuth), -cos(sunAzimuth), 0);
+    float3 sunRay = skyAtmosphereParameters.sunParameterPacked.xyz;
 
     float3 finalColor = float3(0, 0, 0);
 
@@ -248,5 +247,5 @@ void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
         float weight = (i == 0 || i == SKY_VIEW_STEPS) ? 0.5f : 1.0f;
         finalColor += transmittance_i * (singleScattering_i + multiScattering_i) * dx * weight;
     }
-    _SkyViewLutUAV[id.xy] = float4(finalColor, 1.0f);
+    _SkyViewLutUAV[id.xy] = float4(finalColor * GetSunPower(skyAtmosphereParameters), 1.0f);
 }

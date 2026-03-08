@@ -15,6 +15,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
     {
         public ComputeShader computeShader;
         public Color groundAlbedo = new Color(0.3f, 0.3f, 0.3f, 1.0f);
+        public float sunPower = 1.0f;
 
         // Atmosphere Size
         public float bottom = 6360000.0f;
@@ -113,13 +114,12 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             );
         }
 
-        private SkyAtmosphereBuffer BuildSkyAtmosphereBuffer(float sunAngle, float cameraY)
+        private SkyAtmosphereBuffer BuildSkyAtmosphereBuffer(Vector3 sunAngle, float cameraY)
         {
             return new SkyAtmosphereBuffer
             {
-                // TODO: Use real data from settings
-                atmospherePositionPacked = new Vector4(settings.bottom, settings.top, 0, 0),
-                sunParameterPacked = new Vector4(sunAngle, cameraY, 0, settings.sunAngularRadius),
+                atmospherePositionPacked = new Vector4(settings.bottom, settings.top, cameraY, settings.sunPower),
+                sunParameterPacked = new Vector4(sunAngle.x, sunAngle.y, sunAngle.z, settings.sunAngularRadius),
                 densityProfilePacked = new Vector4(1.0f / settings.rayleighScaleHeight, 1.0f / settings.mieScaleHeight,
                     settings.ozoneCenter, settings.ozoneHalfWidth),
                 rayleighScattering = new Vector4(settings.rayleighScattering.x, settings.rayleighScattering.y,
@@ -188,11 +188,10 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             if (lightData.mainLightIndex >= 0)
             {
                 var mainLight = lightData.visibleLights[lightData.mainLightIndex];
-                sunDirection = -mainLight.localToWorldMatrix.GetColumn(2);
+                sunDirection = -mainLight.localToWorldMatrix.GetColumn(2).normalized;
             }
-            float sunAngle = Mathf.Atan2(sunDirection.x, -sunDirection.y);
 
-            var data = BuildSkyAtmosphereBuffer(sunAngle, camera.transform.position.y);
+            var data = BuildSkyAtmosphereBuffer(sunDirection, camera.transform.position.y);
             skyAtmosphereParametersBuffer.SetData(new[] { data });
 
             // 2. Import Resources
@@ -267,8 +266,8 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             using (var builder = renderGraph.AddComputePass<SkyViewLutPassData>("SkyViewLutGen", out var passData))
             {
                 // 5.1. Declare Used Resources
-                builder.UseTexture(transmittanceLutHandle, AccessFlags.Write);
-                builder.UseTexture(multiScatteringLutHandle, AccessFlags.Write);
+                builder.UseTexture(transmittanceLutHandle, AccessFlags.Read);
+                builder.UseTexture(multiScatteringLutHandle, AccessFlags.Read);
                 builder.UseTexture(skyViewLutHandle, AccessFlags.Write);
 
                 // 5.2 Prepare Pass Data
@@ -302,8 +301,8 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
     [StructLayout(LayoutKind.Sequential)]
     struct SkyAtmosphereBuffer
     {
-        public Vector4 atmospherePositionPacked; // bottom_radius, top_radius, unused, unused
-        public Vector4 sunParameterPacked; // sunAzimuth, camY, unused, sunAngularRadius (Y-up)
+        public Vector4 atmospherePositionPacked; // bottom_radius, top_radius, camY, unused
+        public Vector4 sunParameterPacked; // sunDirX, sunDirY, sunDirZ, sunAngularRadius (Y-up)
 
         public Vector4 densityProfilePacked; // rayleigh_expScale, mie_expScale, ozone_center, ozone_half_width
 
