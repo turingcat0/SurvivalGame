@@ -137,7 +137,7 @@ void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
 
     float3 l2Scattering = 0.0f;
     float3 ms = 0.0f;
-    const float phaseL2 = 1 / (4 * PI);
+    const float phaseL2 = 1 / (4 * PI_);
 
 
     for (int rayIndex = 0; rayIndex < MULTI_SCATTERING_RAYS; ++rayIndex)
@@ -181,16 +181,15 @@ void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
             float3 transmittance = GetTransmittance(skyAtmosphereParameters, r, r_mu, distance, intersects);
             float3 albedo = GetGroundAlbedo(skyAtmosphereParameters);
 
-            l2Scattering += albedo * transmittanceToSun * nDl * transmittance / PI;
+            l2Scattering += albedo * transmittanceToSun * nDl * transmittance / PI_;
         }
     }
-    l2Scattering *= phaseL2 * 4 * PI / MULTI_SCATTERING_RAYS;
-    ms *= phaseL2 * 4 * PI / MULTI_SCATTERING_RAYS;
+    l2Scattering *= phaseL2 * 4 * PI_ / MULTI_SCATTERING_RAYS;
+    ms *= phaseL2 * 4 * PI_ / MULTI_SCATTERING_RAYS;
     float3 fMS = 1 / (1 - ms);
     float3 result = l2Scattering * fMS;
     _MultiScatteringLutUAV[id.xy] = float4(result, 1.0f);
 }
-
 [numthreads(8, 8, 1)]
 void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
 {
@@ -205,9 +204,10 @@ void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
     float bottom = GetAtmosphereBottom(skyAtmosphereParameters);
     float top = GetAtmosphereTop(skyAtmosphereParameters);
     float height = GetCameraY(skyAtmosphereParameters);
-    float azimuth = (uv.x - 0.5f) * 2.0f * PI;
-    float mu = GetSkyViewTextureLFromV(uv.y);
-    float sinTheta = sqrt(saturate(1.0f - mu * mu));
+    float azimuth = (uv.x - 0.5f) * 2.0f * PI_;
+    float latitude = GetSkyViewTextureLFromV(uv.y);
+    float mu = sin(latitude);
+    float sinTheta = cos(latitude);
 
     float3 ray = float3(sinTheta * cos(azimuth), mu, sinTheta * sin(azimuth));
     float3 pos = float3(0, height + bottom, 0);
@@ -225,27 +225,39 @@ void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
     float phaseRayleigh = RayleighPhase(cosTheta);
     float phaseMie = MiePhase(cosTheta, skyAtmosphereParameters.mieScatteringPacked.w);
 
+    float3 opticalDepth = float3(0, 0, 0);
+    float3 prevExtinction = float3(0, 0, 0);
+
     for (int i = 0; i <= SKY_VIEW_STEPS; ++i)
     {
         float3 pos_i = pos + ray * dx * i;
         float r_i = length(pos_i);
+        float h_i = r_i - bottom;
         float sun_mu_i = dot(sunRay, pos_i) / r_i;
-        float3 transmittance_i = GetTransmittance(skyAtmosphereParameters, pos.y, mu, dx * i, intersects);
+
+        float3 rayleighScattering = GetRayleighIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.rayleighScattering.xyz;
+        float3 mieScattering = GetMieIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.mieScatteringPacked.xyz;
+        float3 mieAbsorption = GetMieIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.mieAbsorption.xyz;
+        float3 ozoneAbsorption = GetOzoneIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.ozoneAbsorption.xyz;
+
+        float3 currentExtinction = rayleighScattering + mieScattering + mieAbsorption + ozoneAbsorption;
+
+        if (i > 0)
+        {
+            opticalDepth += (prevExtinction + currentExtinction) * 0.5f * dx;
+        }
+        prevExtinction = currentExtinction;
+
+        float3 transmittance_i = exp(-opticalDepth);
 
         float3 transmittanceToSun_i = GetTransmittanceToSun(skyAtmosphereParameters, r_i, sun_mu_i);
-        float3 rayleighIntensity = GetRayleighIntensity(skyAtmosphereParameters, r_i - bottom) * skyAtmosphereParameters.
-            rayleighScattering.
-            xyz;
-        float3 mieIntensity = GetMieIntensity(skyAtmosphereParameters, r_i - bottom) * skyAtmosphereParameters.
-            mieScatteringPacked.xyz;
-        float3 singleScattering_i = (rayleighIntensity * phaseRayleigh + mieIntensity * phaseMie) *
-            transmittanceToSun_i;
 
-        float3 multiScattering_i = GetMultiScattering(skyAtmosphereParameters, r_i, sun_mu_i) * (rayleighIntensity +
-            mieIntensity);
+        float3 singleScattering_i = (rayleighScattering * phaseRayleigh + mieScattering * phaseMie) * transmittanceToSun_i;
+        float3 multiScattering_i = GetMultiScattering(skyAtmosphereParameters, r_i, sun_mu_i) * (rayleighScattering + mieScattering);
 
         float weight = (i == 0 || i == SKY_VIEW_STEPS) ? 0.5f : 1.0f;
         finalColor += transmittance_i * (singleScattering_i + multiScattering_i) * dx * weight;
     }
+
     _SkyViewLutUAV[id.xy] = float4(finalColor * GetSunPower(skyAtmosphereParameters), 1.0f);
 }

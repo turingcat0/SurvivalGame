@@ -73,16 +73,16 @@ MonoBehaviour:
     computeShader: {fileID: 7200000, guid: ff4b87d9a5e34e74e9a4d51fdd2858b6, type: 3}
     groundAlbedo: {r: 0.1, g: 0.1, b: 0.1, a: 1}
     sunPower: 10
-    bottom: 6360000
-    top: 6420000
-    rayleighScaleHeight: 8000
-    mieScaleHeight: 1200
-    ozoneCenter: 25000
-    ozoneHalfWidth: 15000
-    rayleighScattering: {x: 0.000005802, y: 0.000013558, z: 0.0000331}
-    mieScattering: {x: 0.000003996, y: 0.000003996, z: 0.000003996}
-    mieAbsorption: {x: 0.0000044, y: 0.0000044, z: 0.0000044}
-    ozoneAbsorption: {x: 0.00000065, y: 0.000001881, z: 0.000000085}
+    bottom: 6360
+    top: 6420
+    rayleighScaleHeight: 8
+    mieScaleHeight: 1.2
+    ozoneCenter: 25
+    ozoneHalfWidth: 15
+    rayleighScattering: {x: 0.005802, y: 0.013558, z: 0.0331}
+    mieScattering: {x: 0.003996, y: 0.003996, z: 0.003996}
+    mieAbsorption: {x: 0.0044, y: 0.0044, z: 0.0044}
+    ozoneAbsorption: {x: 0.00065, y: 0.001881, z: 0.000085}
     miePhaseFunctionG: 0.8
     sunAngularRadius: 0.004675
 --- !u!114 &7833122117494664109

@@ -128,25 +128,25 @@ float GetUnitRangeFromTextureCoord(float u, int textureSize)
 float DistanceToTopAtmosphereBoundary(float topRadius, float r, float mu)
 {
     float discriminant = r * r * (mu * mu - 1.0) + topRadius * topRadius;
-    return max(-r * mu + SafeSqrt(discriminant), 0.0);
+    return max(-r * mu + SafeSqrt_(discriminant), 0.0);
 }
 
 float DistanceToBottomAtmosphereBoundary(float bottomRadius, float r, float mu)
 {
     float discriminant = r * r * (mu * mu - 1.0) +
         bottomRadius * bottomRadius;
-    return max(-r * mu - SafeSqrt(discriminant), 0.0);
+    return max(-r * mu - SafeSqrt_(discriminant), 0.0);
 }
 
 float GetSkyViewTextureVFromL(float l)
 {
-    return 0.5f + 0.5f * sign(l) * sqrt(abs(l) / (PI / 2));
+    return 0.5f + 0.5f * sign(l) * sqrt(abs(l) / (PI_ / 2));
 }
 
 float GetSkyViewTextureLFromV(float v)
 {
     float v_prime = v * 2.0f - 1.0f;
-    return sign(v_prime) * (v_prime * v_prime) * (PI / 2.0f);
+    return sign(v_prime) * (v_prime * v_prime) * (PI_ / 2.0f);
 }
 
 // (r, mu) -> uv
@@ -157,9 +157,9 @@ float2 GetTransmittanceTextureUvFromRMu(
 {
     mu = ClampCosine(mu);
 
-    float H = SafeSqrt(topRadius * topRadius - bottomRadius * bottomRadius);
+    float H = SafeSqrt_(topRadius * topRadius - bottomRadius * bottomRadius);
 
-    float rho = SafeSqrt(r * r - bottomRadius * bottomRadius);
+    float rho = SafeSqrt_(r * r - bottomRadius * bottomRadius);
 
     float d = DistanceToTopAtmosphereBoundary(topRadius, r, mu);
 
@@ -192,10 +192,10 @@ void GetRMuFromTransmittanceTextureUv(
     x_mu = saturate(x_mu);
     x_r = saturate(x_r);
 
-    float H = SafeSqrt(topRadius * topRadius - bottomRadius * bottomRadius);
+    float H = SafeSqrt_(topRadius * topRadius - bottomRadius * bottomRadius);
 
     float rho = H * x_r;
-    r = SafeSqrt(rho * rho + bottomRadius * bottomRadius);
+    r = SafeSqrt_(rho * rho + bottomRadius * bottomRadius);
 
     float d_min = topRadius - r;
     float d_max = rho + H;
@@ -250,12 +250,12 @@ bool RayIntersectsGround(in SkyAtmosphereParameters skyAtmosphere, float r, floa
 
 float RayleighPhase(float cosTheta)
 {
-    return (3.0f / (16.0f * PI)) * (1 + cosTheta * cosTheta);
+    return (3.0f / (16.0f * PI_)) * (1 + cosTheta * cosTheta);
 }
 
 float MiePhase(float cosTheta, float g)
 {
-    return (3.0f / (8.0f * PI)) * (1 - g * g) * (1 + cosTheta * cosTheta) / ((2 + g * g) * pow(
+    return (3.0f / (8.0f * PI_)) * (1 - g * g) * (1 + cosTheta * cosTheta) / ((2 + g * g) * pow(
         1 + g * g - 2 * g * cosTheta, 1.5f));
 }
 

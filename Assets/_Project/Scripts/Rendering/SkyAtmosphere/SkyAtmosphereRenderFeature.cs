@@ -9,30 +9,29 @@ using UnityEngine.Serialization;
 
 public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
 {
-    // Use this class to pass around settings from the feature to the pass
     [Serializable]
     public class SkyAtmosphereRenderFeatureSettings
     {
         public ComputeShader computeShader;
-        public Color groundAlbedo = new Color(0.3f, 0.3f, 0.3f, 1.0f);
+        public Color groundAlbedo = new Color(0.1f, 0.1f, 0.1f, 1.0f);
         public float sunPower = 1.0f;
 
         // Atmosphere Size
-        public float bottom = 6360000.0f;
-        public float top = 6420000.0f;
+        public float bottom = 6360.0f; //km
+        public float top = 6420.0f;  //km
 
         // Intensity
-        public float rayleighScaleHeight = 8000.0f;
-        public float mieScaleHeight = 1200.0f;
-        public float ozoneCenter = 25000f;
-        public float ozoneHalfWidth = 15000f;
+        public float rayleighScaleHeight = 8.0f;
+        public float mieScaleHeight = 1.2f;
+        public float ozoneCenter = 25.0f;
+        public float ozoneHalfWidth = 15.0f;
 
         // Coefficient
         // All from the paper "A Scalable and Production Ready Sky and Atmosphere Rendering Technique"
-        public Vector3 rayleighScattering = new Vector3(5.802e-6f, 13.558e-6f, 33.1e-6f);
-        public Vector3 mieScattering = new Vector3(3.996e-6f, 3.996e-6f, 3.996e-6f);
-        public Vector3 mieAbsorption = new Vector3(4.40e-6f, 4.40e-6f, 4.40e-6f);
-        public Vector3 ozoneAbsorption = new Vector3(0.650e-6f, 1.881e-6f, 0.085e-6f);
+        public Vector3 rayleighScattering = new Vector3(5.802e-3f, 13.558e-3f, 33.1e-3f);
+        public Vector3 mieScattering = new Vector3(3.996e-3f, 3.996e-3f, 3.996e-3f);
+        public Vector3 mieAbsorption = new Vector3(4.40e-3f, 4.40e-3f, 4.40e-3f);
+        public Vector3 ozoneAbsorption = new Vector3(0.650e-3f, 1.881e-3f, 0.085e-3f);
         public float miePhaseFunctionG = 0.8f;
         public float sunAngularRadius = 0.00935f / 2.0f;
     }
@@ -91,6 +90,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 TransmittanceLutWidth, TransmittanceLutHeight,
                 enableRandomWrite: true,
                 filterMode: FilterMode.Bilinear,
+                wrapMode: TextureWrapMode.Clamp,
                 colorFormat: GraphicsFormat.R16G16B16A16_SFloat,
                 // colorFormat: GraphicsFormat.R32G32B32A32_SFloat, //Debug only
                 name: "_TransmittanceLut"
@@ -100,6 +100,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 MultiScatteringLutWidth, MultiScatteringLutHeight,
                 enableRandomWrite: true,
                 filterMode: FilterMode.Bilinear,
+                wrapMode: TextureWrapMode.Clamp,
                 colorFormat: GraphicsFormat.R16G16B16A16_SFloat,
                 // colorFormat: GraphicsFormat.R32G32B32A32_SFloat, //Debug only
                 name: "_MultiScatteringLut"
@@ -109,6 +110,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 SkyViewLutWidth, SkyViewLutHeight,
                 enableRandomWrite: true,
                 filterMode: FilterMode.Bilinear,
+                wrapMode: TextureWrapMode.Clamp,
                 colorFormat: GraphicsFormat.R16G16B16A16_SFloat,
                 name: "_SkyViewLut"
             );
@@ -118,7 +120,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
         {
             return new SkyAtmosphereBuffer
             {
-                atmospherePositionPacked = new Vector4(settings.bottom, settings.top, cameraY, settings.sunPower),
+                atmospherePositionPacked = new Vector4(settings.bottom, settings.top, cameraY / 1000 /* km */, settings.sunPower),
                 sunParameterPacked = new Vector4(sunAngle.x, sunAngle.y, sunAngle.z, settings.sunAngularRadius),
                 densityProfilePacked = new Vector4(1.0f / settings.rayleighScaleHeight, 1.0f / settings.mieScaleHeight,
                     settings.ozoneCenter, settings.ozoneHalfWidth),
@@ -183,7 +185,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             var camera = cameraData.camera;
             var lightData = frameData.Get<UniversalLightData>();
 
-            Vector3 sunDirection = Vector3.up; // 默认给一个正午向上的方向
+            Vector3 sunDirection = Vector3.up;
 
             if (lightData.mainLightIndex >= 0)
             {
@@ -191,7 +193,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 sunDirection = -mainLight.localToWorldMatrix.GetColumn(2).normalized;
             }
 
-            var data = BuildSkyAtmosphereBuffer(sunDirection, camera.transform.position.y);
+            var data = BuildSkyAtmosphereBuffer(sunDirection, Math.Max(0, camera.transform.position.y));
             skyAtmosphereParametersBuffer.SetData(new[] { data });
 
             // 2. Import Resources
@@ -269,6 +271,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 builder.UseTexture(transmittanceLutHandle, AccessFlags.Read);
                 builder.UseTexture(multiScatteringLutHandle, AccessFlags.Read);
                 builder.UseTexture(skyViewLutHandle, AccessFlags.Write);
+                builder.AllowGlobalStateModification(true);
 
                 // 5.2 Prepare Pass Data
                 passData.shader = settings.computeShader;
@@ -290,8 +293,14 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                         data.multiScatteringLut);
                     ctx.cmd.SetComputeTextureParam(data.shader, data.kernel, "_SkyViewLutUAV", data.skyViewLut);
                     ctx.cmd.DispatchCompute(data.shader, data.kernel, data.groupX, data.groupY, 1);
+
+                    ctx.cmd.SetGlobalTexture("_SkyViewLut", data.skyViewLut);
+                    ctx.cmd.SetGlobalTexture("_TransmittanceLut", data.transmittanceLut);
+                    ctx.cmd.SetGlobalBuffer("_SkyAtmosphereParametersBuffer", data.skyAtmosphereParameters);
                 });
             }
+
+            // 6. Build AerialPerspectiveLut Pass
 
 
         }
