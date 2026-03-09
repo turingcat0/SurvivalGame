@@ -3,17 +3,21 @@
 #pragma kernel kComputeTransmittanceLut
 #pragma kernel kComputeMultiScatteringLut
 #pragma kernel kComputeSkyViewLut
+#pragma kernel kComputeAerialPerspectiveLut
 
 
 #define TRANSMITTANCE_STEPS 40
 #define MULTI_SCATTERING_RAYS 64
 #define MULTI_SCATTERING_STEPS 20
 #define SKY_VIEW_STEPS 30
+#define AERIAL_PERSPECTIVE_STEPS 32
+#define MAX_AERIAL_DISTANCE 16000
 
 StructuredBuffer<SkyAtmosphereParameters> _SkyAtmosphereParametersBuffer;
 RWTexture2D<float4> _TransmittanceLutUAV;
 RWTexture2D<float4> _MultiScatteringLutUAV;
 RWTexture2D<float4> _SkyViewLutUAV;
+RWTexture3D<float4> _AerialPerspectiveLutUAV;
 
 Texture2D<float4> _TransmittanceLut;
 SamplerState sampler_TransmittanceLut;
@@ -260,4 +264,73 @@ void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
     }
 
     _SkyViewLutUAV[id.xy] = float4(finalColor * GetSunPower(skyAtmosphereParameters), 1.0f);
+}
+
+
+float4x4 _InverseViewProjMatrix;
+float4 _CameraPosition;
+
+[numthreads(8, 8, 8)]
+void kComputeAerialPerspectiveLut(uint3 id : SV_DispatchThreadID)
+{
+    uint3 size;
+    _AerialPerspectiveLutUAV.GetDimensions(size.x, size.y, size.z);
+    if (id.x >= size.x || id.y >= size.y || id.z >= size.z)
+    {
+        return;
+    }
+    SkyAtmosphereParameters skyAtmosphereParameters = _SkyAtmosphereParametersBuffer[0];
+    float2 uv = (id.xy + 0.5f) / size.xy;
+    float2 ndc = uv * 2.0f - 1.0f;
+
+    float4 target = mul(_InverseViewProjMatrix, float4(ndc, 0.5f, 1.0f));
+    float3 ray = normalize(target.xyz - _CameraPosition.xyz);
+    float slice = (id.z + 0.5f) / size.z;
+    float distance = (slice * slice) * MAX_AERIAL_DISTANCE;
+    float bottom = GetAtmosphereBottom(skyAtmosphereParameters);
+
+    float3 sunRay = skyAtmosphereParameters.sunParameterPacked.xyz;
+    float3 pos = float3(0, GetCameraY(skyAtmosphereParameters) + bottom, 0);
+
+    float cosTheta = dot(ray, sunRay);
+    float phaseRayleigh = RayleighPhase(cosTheta);
+    float phaseMie = MiePhase(cosTheta, skyAtmosphereParameters.mieScatteringPacked.w);
+    float dx = distance / AERIAL_PERSPECTIVE_STEPS;
+
+    float3 finalColor = float3(0.0f, 0.0f, 0.0f);
+    float3 opticalDepth = float3(0, 0, 0);
+    float3 prevExtinction = float3(0, 0, 0);
+
+    for (int i = 0; i <= AERIAL_PERSPECTIVE_STEPS; ++i)
+    {
+        float3 pos_i = pos + ray * dx * i;
+        float r_i = length(pos_i);
+        float h_i = max(r_i - bottom, 0.001f);
+        float sun_mu_i = dot(sunRay, pos_i) / r_i;
+
+        float3 rayleighScattering = GetRayleighIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.rayleighScattering.xyz;
+        float3 mieScattering = GetMieIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.mieScatteringPacked.xyz;
+        float3 mieAbsorption = GetMieIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.mieAbsorption.xyz;
+        float3 ozoneAbsorption = GetOzoneIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.ozoneAbsorption.xyz;
+
+        float3 currentExtinction = rayleighScattering + mieScattering + mieAbsorption + ozoneAbsorption;
+
+        if (i > 0)
+        {
+            opticalDepth += (prevExtinction + currentExtinction) * 0.5f * dx;
+        }
+        prevExtinction = currentExtinction;
+
+        float3 transmittance_i = exp(-opticalDepth);
+
+        float3 transmittanceToSun_i = GetTransmittanceToSun(skyAtmosphereParameters, max(r_i, bottom + 0.001f), sun_mu_i);
+
+        float3 singleScattering_i = (rayleighScattering * phaseRayleigh + mieScattering * phaseMie) * transmittanceToSun_i;
+        float3 multiScattering_i = GetMultiScattering(skyAtmosphereParameters, max(r_i, bottom + 0.001f), sun_mu_i) * (rayleighScattering + mieScattering);
+
+        float weight = (i == 0 || i == AERIAL_PERSPECTIVE_STEPS) ? 0.5f : 1.0f;
+        finalColor += transmittance_i * (singleScattering_i + multiScattering_i) * dx * weight;
+    }
+    float alpha = dot(exp(-opticalDepth), float3(0.333333f, 0.333333f, 0.333333f));
+    _AerialPerspectiveLutUAV[id] = float4(finalColor * GetSunPower(skyAtmosphereParameters), alpha);
 }

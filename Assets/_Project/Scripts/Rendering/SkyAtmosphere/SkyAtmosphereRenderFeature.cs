@@ -67,14 +67,15 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
         private RTHandle transmittanceLut;
         private RTHandle multiScatteringLut;
         private RTHandle skyViewLut;
+        private RTHandle aerialPerspectiveLut;
 
         private const int TransmittanceLutWidth = 256;
         private const int TransmittanceLutHeight = 64;
         private const int MultiScatteringLutWidth = 32;
         private const int MultiScatteringLutHeight = 32;
-        private const int SkyViewLutWidth = 200;
-        private const int SkyViewLutHeight = 100;
-
+        private const int SkyViewLutWidth = 2048;
+        private const int SkyViewLutHeight = 2048;
+        private const int AerialPerspectiveLutSize = 32;
 
         public SkyAtmosphereRenderFeaturePass(SkyAtmosphereRenderFeatureSettings settings)
         {
@@ -113,6 +114,16 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 wrapMode: TextureWrapMode.Clamp,
                 colorFormat: GraphicsFormat.R16G16B16A16_SFloat,
                 name: "_SkyViewLut"
+            );
+
+            aerialPerspectiveLut ??= RTHandles.Alloc(
+                AerialPerspectiveLutSize, AerialPerspectiveLutSize, AerialPerspectiveLutSize,
+                dimension:TextureDimension.Tex3D,
+                enableRandomWrite: true,
+                filterMode:FilterMode.Bilinear,
+                wrapMode:TextureWrapMode.Clamp,
+                colorFormat:GraphicsFormat.R16G16B16A16_SFloat,
+                name: "_AerialPerspectiveLut"
             );
         }
 
@@ -177,6 +188,21 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             public int groupX, groupY;
         }
 
+        private class AerialPerspectiveLutPassData
+        {
+            public ComputeShader shader;
+            public int kernel;
+
+            public TextureHandle transmittanceLut;
+            public TextureHandle multiScatteringLut;
+            public BufferHandle skyAtmosphereParameters;
+            public TextureHandle aerialPerspectiveLut;
+            public Matrix4x4 inverseViewProjMat;
+            public Vector4 cameraPosition;
+
+            public int groupX, groupY, groupZ;
+        }
+
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
             // 1. Update Atmosphere Buffer
@@ -201,6 +227,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             var transmittanceLutHandle = renderGraph.ImportTexture(transmittanceLut);
             var multiScatteringLutHandle = renderGraph.ImportTexture(multiScatteringLut);
             var skyViewLutHandle = renderGraph.ImportTexture(skyViewLut);
+            var aerialPerspectiveLuteHandle = renderGraph.ImportTexture(aerialPerspectiveLut);
 
             // 3. Build TransmittanceLUTGen Pass
             using (var builder =
@@ -301,7 +328,43 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             }
 
             // 6. Build AerialPerspectiveLut Pass
+            using (var builder = renderGraph.AddComputePass<AerialPerspectiveLutPassData>("AerialPerspectiveLutGen", out var passData))
+            {
+                // 6.1 Declare Used Resources
+                builder.UseTexture(transmittanceLutHandle, AccessFlags.Read);
+                builder.UseTexture(multiScatteringLutHandle, AccessFlags.Read);
+                builder.UseTexture(aerialPerspectiveLuteHandle, AccessFlags.Write);
+                builder.UseBuffer(parameterHandle, AccessFlags.Read);
+                builder.AllowGlobalStateModification(true);
 
+                // 6.2 Prepare Pass Data
+                passData.shader = settings.computeShader;
+                passData.kernel =  passData.shader.FindKernel("kComputeAerialPerspectiveLut");
+                passData.skyAtmosphereParameters = parameterHandle;
+                passData.transmittanceLut =  transmittanceLutHandle;
+                passData.multiScatteringLut = multiScatteringLutHandle;
+                passData.aerialPerspectiveLut = aerialPerspectiveLuteHandle;
+                passData.groupX = (AerialPerspectiveLutSize + 7) / 8;
+                passData.groupY = (AerialPerspectiveLutSize + 7) / 8;
+                passData.groupZ = (AerialPerspectiveLutSize + 7) / 8;
+
+                var viewProjMatrix = GL.GetGPUProjectionMatrix(camera.projectionMatrix, false) * camera.worldToCameraMatrix;
+                passData.inverseViewProjMat = viewProjMatrix.inverse;
+                passData.cameraPosition = camera.transform.position;
+
+                // 6.3 Set RenderFunc
+                builder.SetRenderFunc(static (AerialPerspectiveLutPassData data, ComputeGraphContext ctx) =>
+                {
+                    ctx.cmd.SetComputeBufferParam(data.shader, data.kernel, "_SkyAtmosphereParametersBuffer", data.skyAtmosphereParameters);
+                    ctx.cmd.SetComputeTextureParam(data.shader, data.kernel, "_TransmittanceLut", data.transmittanceLut);
+                    ctx.cmd.SetComputeTextureParam(data.shader, data.kernel, "_MultiScatteringLut", data.multiScatteringLut);
+                    ctx.cmd.SetComputeTextureParam(data.shader, data.kernel, "_AerialPerspectiveLutUAV", data.aerialPerspectiveLut);
+                    ctx.cmd.SetComputeMatrixParam(data.shader,  "_InverseViewProjMatrix", data.inverseViewProjMat);
+                    ctx.cmd.SetComputeVectorParam(data.shader, "_CameraPosition", data.cameraPosition);
+                    ctx.cmd.DispatchCompute(data.shader, data.kernel, data.groupX, data.groupY, data.groupZ);
+                    ctx.cmd.SetGlobalTexture("_AerialPerspectiveLut",  data.aerialPerspectiveLut);
+                });
+            }
 
         }
     }
