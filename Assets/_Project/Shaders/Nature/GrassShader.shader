@@ -84,8 +84,9 @@ Shader "TuringCat/Nature/Grass"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
-             #include "Common.hlsl"
+            #include "NatureCommon.hlsl"
             #include "GrassCommon.hlsl"
+            #include "../SkyAtmosphere/SkyAtmosphereFog.hlsl"
 
             struct Attributes
             {
@@ -110,9 +111,9 @@ Shader "TuringCat/Nature/Grass"
                 float3 tbn2 : TEXCOORD4;
 
                 float3 positionWS : TEXCOORD5;
-                half fogFactor : TEXCOORD6;
-
+                SKY_ATMOSPHERE_FOG_COORD(6);
                 half color : TEXCOORD7;
+
                 #ifdef DEBUG
                 half debug : TEXCOORD7;
                 int debug2 : TEXCOORD8;
@@ -145,7 +146,8 @@ Shader "TuringCat/Nature/Grass"
                 float3 col1 = float3(o2w._m01, o2w._m11, o2w._m21);
                 float3 col2 = float3(o2w._m02, o2w._m12, o2w._m22);
 
-                OUT.positionWS = centerWS + IN.positionOS.z * right * length(col2) + IN.positionOS.y * up * length(col1);
+                OUT.positionWS = centerWS + IN.positionOS.z * right * length(col2) + IN.positionOS.y * up *
+                    length(col1);
                 #else
                 OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
                 #endif
@@ -164,7 +166,6 @@ Shader "TuringCat/Nature/Grass"
 
 
                 OUT.positionHCS = TransformWorldToHClip(OUT.positionWS);
-                OUT.fogFactor = ComputeFogFactor(OUT.positionHCS.z);
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
                 OUT.normalUV = TRANSFORM_TEX(IN.uv, _NormalMap);
 
@@ -245,7 +246,7 @@ Shader "TuringCat/Nature/Grass"
                     shadowAttenuation * specColor.a;
                 finalCol.xyz += spec;
                 #endif
-                finalCol.xyz = MixFog(finalCol.xyz, IN.fogFactor);
+                SKY_ATMOSPHERE_APPLY_FOG(IN, finalCol);
                 finalCol.a = 1;
                 return finalCol;
             }
@@ -273,7 +274,7 @@ Shader "TuringCat/Nature/Grass"
             #pragma shader_feature USE_AN
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
-            #include "Common.hlsl"
+            #include "NatureCommon.hlsl"
             #include "GrassCommon.hlsl"
 
 
@@ -323,7 +324,7 @@ Shader "TuringCat/Nature/Grass"
                 float3 col1 = float3(o2w._m01, o2w._m11, o2w._m21);
                 float3 col2 = float3(o2w._m02, o2w._m12, o2w._m22);
 
-                 float3 worldPos = centerWS + attr.posOS.z * right * length(col2) + attr.posOS.y * up * length(col1);
+                float3 worldPos = centerWS + attr.posOS.z * right * length(col2) + attr.posOS.y * up * length(col1);
                 #else
                 float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);
                 #endif

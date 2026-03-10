@@ -32,6 +32,7 @@ Shader "TuringCat/Nature/Branch"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            #include "../SkyAtmosphere/SkyAtmosphereFog.hlsl"
 
             struct Attributes
             {
@@ -53,7 +54,7 @@ Shader "TuringCat/Nature/Branch"
                 float3 tbn2 : TEXCOORD4;
 
                 float3 positionWS : TEXCOORD5;
-                half fogFactor : TEXCOORD6;
+                SKY_ATMOSPHERE_FOG_COORD(6);
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -75,9 +76,10 @@ Shader "TuringCat/Nature/Branch"
                 UNITY_TRANSFER_INSTANCE_ID(IN, OUT);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
 
-                OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
-                OUT.positionHCS = TransformWorldToHClip(OUT.positionWS);
-                OUT.fogFactor = ComputeFogFactor(OUT.positionHCS.z);
+                VertexPositionInputs input = GetVertexPositionInputs(IN.positionOS.xyz);
+                SKY_ATMOSPHERE_INIT_FOG(OUT, input);
+                OUT.positionWS = input.positionWS;
+                OUT.positionHCS = input.positionCS;
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
                 OUT.normalUV = TRANSFORM_TEX(IN.uv, _NormalMap);
 
@@ -123,8 +125,7 @@ Shader "TuringCat/Nature/Branch"
                 // Ambient Light
                 half3 sh = SampleSH(wNormal);
                 finalCol.xyz += sh * color.xyz;
-                finalCol.xyz = MixFog(finalCol.xyz, IN.fogFactor);
-
+                SKY_ATMOSPHERE_APPLY_FOG(IN, finalCol);
                 finalCol.a = 1;
                 return finalCol;
             }

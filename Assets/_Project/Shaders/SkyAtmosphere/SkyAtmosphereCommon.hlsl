@@ -59,6 +59,8 @@
 #define SKY_ATMOSPHERE_COMMON_H
 #include "../Common.hlsl"
 
+#define MAX_AERIAL_DISTANCE 16
+
 struct SkyAtmosphereParameters
 {
     float4 atmospherePositionPacked; // bottom_radius, top_radius, camY, sunPower
@@ -240,6 +242,16 @@ float3 FibonacciSphereDir(uint i, uint N)
     float x = cos(theta) * r;
     float z = sin(theta) * r;
     return float3(x, y, z);
+}
+
+float GetFogSliceFromDistance(float distance, float scale)
+{
+    return sqrt(distance / (MAX_AERIAL_DISTANCE / scale));
+}
+
+float GetFogDistanceFromSlice(float slice)
+{
+    return (slice * slice) * MAX_AERIAL_DISTANCE;
 }
 
 bool RayIntersectsGround(in SkyAtmosphereParameters skyAtmosphere, float r, float mu)

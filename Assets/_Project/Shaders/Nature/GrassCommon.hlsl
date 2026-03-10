@@ -1,6 +1,6 @@
 ﻿#ifndef GRASS_COMMON_H
 #define GRASS_COMMON_H
-#include "Common.hlsl"
+#include "NatureCommon.hlsl"
 
 TEXTURE2D(_BaseMap);
 SAMPLER(sampler_BaseMap);

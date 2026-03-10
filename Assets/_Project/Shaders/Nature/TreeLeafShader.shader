@@ -72,8 +72,8 @@ Shader "TuringCat/Nature/Leaf"
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
-            #include "Common.hlsl"
-
+            #include "NatureCommon.hlsl"
+            #include "../SkyAtmosphere/SkyAtmosphereFog.hlsl"
             struct Attributes
             {
                 float4 positionOS : POSITION;
@@ -84,7 +84,6 @@ Shader "TuringCat/Nature/Leaf"
                 #ifdef USE_AN
                 half4 color : COLOR;
                 #endif
-
             };
 
             struct Varyings
@@ -98,7 +97,7 @@ Shader "TuringCat/Nature/Leaf"
                 float3 tbn2 : TEXCOORD4;
 
                 float3 positionWS : TEXCOORD5;
-                half fogFactor : TEXCOORD6;
+                SKY_ATMOSPHERE_FOG_COORD(6);
                 UNITY_VERTEX_INPUT_INSTANCE_ID
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -132,6 +131,8 @@ Shader "TuringCat/Nature/Leaf"
                 UNITY_TRANSFER_INSTANCE_ID(IN, OUT);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
 
+                VertexPositionInputs vertexPosInputs = GetVertexPositionInputs(IN.positionOS.xyz);
+                SKY_ATMOSPHERE_INIT_FOG(OUT, vertexPosInputs);
                 // Billboard
                 #ifdef USE_BILLBOARD
                 float3 centerWS = TransformObjectToWorld(float3(0, 0, 0));
@@ -148,9 +149,11 @@ Shader "TuringCat/Nature/Leaf"
                 float3 col1 = float3(o2w._m01, o2w._m11, o2w._m21);
                 float3 col2 = float3(o2w._m02, o2w._m12, o2w._m22);
 
-                OUT.positionWS = centerWS + IN.positionOS.z * right * length(col2) + IN.positionOS.y * up * length(col1);
+                OUT.positionWS = centerWS + IN.positionOS.z * right * length(col2) + IN.positionOS.y * up *
+                    length(col1);
                 #else
-                OUT.positionWS = TransformObjectToWorld(IN.positionOS.xyz);
+                OUT.positionWS = vertexPosInputs.positionWS;
+
                 #endif
                 #ifdef USE_AN
                 float3 anim = vertexAnimation(OUT.positionWS, IN.positionOS, IN.color, _AnimationScale);
@@ -158,7 +161,6 @@ Shader "TuringCat/Nature/Leaf"
                 #endif
 
                 OUT.positionHCS = TransformWorldToHClip(OUT.positionWS);
-                OUT.fogFactor = ComputeFogFactor(OUT.positionHCS.z);
                 OUT.uv = TRANSFORM_TEX(IN.uv, _BaseMap);
                 OUT.normalUV = TRANSFORM_TEX(IN.uv, _NormalMap);
 
@@ -213,10 +215,12 @@ Shader "TuringCat/Nature/Leaf"
 
                 half4 transColor = SAMPLE_TEXTURE2D(_TransMap, sampler_TransMap, IN.uv);
 
-                half3 trans1 = _TransColor.xyz * transColor.xyz * mainLight.color * mainLight.shadowAttenuation * smoothstep(
-                    _TransThreshold, 1, nndl);
+                half3 trans1 = _TransColor.xyz * transColor.xyz * mainLight.color * mainLight.shadowAttenuation *
+                    smoothstep(
+                        _TransThreshold, 1, nndl);
                 finalCol.xyz += trans1;
-                half3 trans2 = _TransColor.xyz * _TransStrength * mainLight.color * transColor.xyz * pow(nndl, _TransSharpness) *
+                half3 trans2 = _TransColor.xyz * _TransStrength * mainLight.color * transColor.xyz * pow(
+                        nndl, _TransSharpness) *
                     mainLight.shadowAttenuation;
                 finalCol.xyz += trans2;
                 #endif
@@ -233,7 +237,8 @@ Shader "TuringCat/Nature/Leaf"
                     shadowAttenuation * specColor.a;
                 finalCol.xyz += spec;
                 #endif
-                finalCol.xyz = MixFog(finalCol.xyz, IN.fogFactor);
+
+                SKY_ATMOSPHERE_APPLY_FOG(IN, finalCol);
                 finalCol.a = 1;
                 return finalCol;
             }
@@ -310,7 +315,7 @@ Shader "TuringCat/Nature/Leaf"
                 float3 col1 = float3(o2w._m01, o2w._m11, o2w._m21);
                 float3 col2 = float3(o2w._m02, o2w._m12, o2w._m22);
 
-                 float3 worldPos = centerWS + attr.posOS.z * right * length(col2) + attr.posOS.y * up * length(col1);
+                float3 worldPos = centerWS + attr.posOS.z * right * length(col2) + attr.posOS.y * up * length(col1);
                 #else
                 float3 worldPos = TransformObjectToWorld(attr.posOS.xyz);
                 #endif

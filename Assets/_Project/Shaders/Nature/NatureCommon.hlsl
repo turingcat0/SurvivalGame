@@ -1,5 +1,5 @@
-#ifndef COMMON_H
-#define COMMON_H
+#ifndef NATURE_COMMON_H
+#define NATURE_COMMON_H
 
 float rand(float2 st)
 {

@@ -11,7 +11,7 @@
 #define MULTI_SCATTERING_STEPS 20
 #define SKY_VIEW_STEPS 30
 #define AERIAL_PERSPECTIVE_STEPS 32
-#define MAX_AERIAL_DISTANCE 16000
+
 
 StructuredBuffer<SkyAtmosphereParameters> _SkyAtmosphereParametersBuffer;
 RWTexture2D<float4> _TransmittanceLutUAV;
@@ -286,7 +286,7 @@ void kComputeAerialPerspectiveLut(uint3 id : SV_DispatchThreadID)
     float4 target = mul(_InverseViewProjMatrix, float4(ndc, 0.5f, 1.0f));
     float3 ray = normalize(target.xyz - _CameraPosition.xyz);
     float slice = (id.z + 0.5f) / size.z;
-    float distance = (slice * slice) * MAX_AERIAL_DISTANCE;
+    float distance = GetFogDistanceFromSlice(slice);
     float bottom = GetAtmosphereBottom(skyAtmosphereParameters);
 
     float3 sunRay = skyAtmosphereParameters.sunParameterPacked.xyz;
