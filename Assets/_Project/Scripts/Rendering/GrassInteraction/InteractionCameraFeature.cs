@@ -154,6 +154,10 @@ public class InteractionCameraFeature : ScriptableRendererFeature
 
             var camData = frameData.Get<UniversalCameraData>();
             var renderData = frameData.Get<UniversalRenderingData>();
+            if (camData.cameraType == CameraType.Reflection)
+            {
+                return;
+            }
 
             // Pass 1, stamp -> impulse
             var shaderTag = new ShaderTagId(s.shaderTag);

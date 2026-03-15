@@ -23,6 +23,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
 
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
     {
+
         renderer.EnqueuePass(pass);
     }
 
@@ -46,8 +47,8 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
         private const int TransmittanceLutHeight = 64;
         private const int MultiScatteringLutWidth = 32;
         private const int MultiScatteringLutHeight = 32;
-        private const int SkyViewLutWidth = 2048;
-        private const int SkyViewLutHeight = 2048;
+        private const int SkyViewLutWidth = 200;
+        private const int SkyViewLutHeight = 100;
         private const int AerialPerspectiveLutSize = 32;
 
         public SkyAtmosphereRenderFeaturePass(ComputeShader computeShader)
@@ -80,15 +81,16 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 name: "_MultiScatteringLut"
             );
 
+
             skyViewLut ??= RTHandles.Alloc(
                 SkyViewLutWidth, SkyViewLutHeight,
                 enableRandomWrite: true,
                 filterMode: FilterMode.Bilinear,
                 wrapMode: TextureWrapMode.Clamp,
                 colorFormat: GraphicsFormat.R16G16B16A16_SFloat,
+                // colorFormat: GraphicsFormat.R32G32B32A32_SFloat,
                 name: "_SkyViewLut"
             );
-
             aerialPerspectiveLut ??= RTHandles.Alloc(
                 AerialPerspectiveLutSize, AerialPerspectiveLutSize, AerialPerspectiveLutSize,
                 dimension:TextureDimension.Tex3D,
@@ -186,19 +188,28 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             if (SkyAtmosphere.Instance == null)
                 return;
 
+
+            var sky = SkyAtmosphere.Instance;
+            var cameraData = frameData.Get<UniversalCameraData>();
+            if (cameraData.cameraType == CameraType.Reflection)
+            {
+                return;
+            }
+
+
             // 1. Update Atmosphere Buffer
             EnsureResources();
-            var cameraData = frameData.Get<UniversalCameraData>();
             var camera = cameraData.camera;
-            var lightData = frameData.Get<UniversalLightData>();
 
-            Vector3 sunDirection = Vector3.up;
 
-            if (lightData.mainLightIndex >= 0)
-            {
-                var mainLight = lightData.visibleLights[lightData.mainLightIndex];
-                sunDirection = -mainLight.localToWorldMatrix.GetColumn(2).normalized;
-            }
+            // Read the sun direction directly from the Light transform on
+            // SkyAtmosphere, rather than from URP's visibleLights list.
+            // URP excludes lights with intensity == 0 from visibleLights,
+            // which would cause sunDirection to fall back to Vector3.up (noon)
+            // whenever SunLightUpdater sets the intensity to 0.
+            Vector3 sunDirection = sky.sun != null
+                ? -sky.sun.transform.forward
+                : Vector3.up;
 
             var data = BuildSkyAtmosphereBuffer(sunDirection, Math.Max(0, camera.transform.position.y));
             skyAtmosphereParametersBuffer.SetData(new[] { data });
@@ -210,67 +221,82 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             var skyViewLutHandle = renderGraph.ImportTexture(skyViewLut);
             var aerialPerspectiveLuteHandle = renderGraph.ImportTexture(aerialPerspectiveLut);
 
-            // 3. Build TransmittanceLUTGen Pass
-            using (var builder =
-                   renderGraph.AddComputePass<TransmittanceLutPassData>("TransmittanceLutGen", out var passData))
+            // 3 & 4. Transmittance LUT + Multi-Scattering LUT
+            // These only depend on the atmosphere's optical properties (not sun direction
+            // or camera position), so we skip them when the atmosphere parameters have
+            // not changed since the last frame.
+            bool needAtmosphereLuts = sky.AtmosphereParamsDirty;
+            if (needAtmosphereLuts)
             {
-                // 3.1. Declare Used Resources
-                builder.UseTexture(transmittanceLutHandle, AccessFlags.Write);
-                builder.UseBuffer(parameterHandle, AccessFlags.Read);
-
-                // 3.2. Prepare Pass Data
-                passData.shader = computeShader;
-                passData.kernel = passData.shader.FindKernel("kComputeTransmittanceLut");
-
-                passData.transmittanceLut = transmittanceLutHandle;
-                passData.skyAtmosphereParameters = parameterHandle;
-
-                passData.groupX = (TransmittanceLutWidth + 15) / 16;
-                passData.groupY = (TransmittanceLutHeight + 15) / 16;
-
-                // 3.3. Set Render Function
-                builder.SetRenderFunc(static (TransmittanceLutPassData data, ComputeGraphContext ctx) =>
+                // 3. Build TransmittanceLUTGen Pass
+                using (var builder =
+                       renderGraph.AddComputePass<TransmittanceLutPassData>("TransmittanceLutGen", out var passData))
                 {
-                    var cmd = ctx.cmd;
+                    // 3.1. Declare Used Resources
+                    builder.UseTexture(transmittanceLutHandle, AccessFlags.Write);
+                    builder.UseBuffer(parameterHandle, AccessFlags.Read);
 
-                    cmd.SetComputeBufferParam(data.shader, data.kernel, "_SkyAtmosphereParametersBuffer",
-                        data.skyAtmosphereParameters);
-                    cmd.SetComputeTextureParam(data.shader, data.kernel, "_TransmittanceLutUAV",
-                        data.transmittanceLut);
-                    cmd.DispatchCompute(data.shader, data.kernel, data.groupX, data.groupY, 1);
-                });
+                    // 3.2. Prepare Pass Data
+                    passData.shader = computeShader;
+                    passData.kernel = passData.shader.FindKernel("kComputeTransmittanceLut");
+
+                    passData.transmittanceLut = transmittanceLutHandle;
+                    passData.skyAtmosphereParameters = parameterHandle;
+
+                    passData.groupX = (TransmittanceLutWidth + 15) / 16;
+                    passData.groupY = (TransmittanceLutHeight + 15) / 16;
+
+                    // 3.3. Set Render Function
+                    builder.SetRenderFunc(static (TransmittanceLutPassData data, ComputeGraphContext ctx) =>
+                    {
+                        var cmd = ctx.cmd;
+
+                        cmd.SetComputeBufferParam(data.shader, data.kernel, "_SkyAtmosphereParametersBuffer",
+                            data.skyAtmosphereParameters);
+                        cmd.SetComputeTextureParam(data.shader, data.kernel, "_TransmittanceLutUAV",
+                            data.transmittanceLut);
+                        cmd.DispatchCompute(data.shader, data.kernel, data.groupX, data.groupY, 1);
+                    });
+                }
+
+                // 4. Build MultiScatteringLUTGen Pass
+                using (var builder =
+                       renderGraph.AddComputePass<MultiScatteringLutPassData>("MultiScatteringLUTGen", out var passData))
+                {
+                    // 4.1. Declare Used Resources
+                    builder.UseTexture(transmittanceLutHandle, AccessFlags.Read);
+                    builder.UseTexture(multiScatteringLutHandle, AccessFlags.Write);
+                    builder.UseBuffer(parameterHandle, AccessFlags.Read);
+
+                    // 4.2 Prepare Pass Data
+                    passData.shader = computeShader;
+                    passData.kernel = passData.shader.FindKernel("kComputeMultiScatteringLut");
+                    passData.transmittanceLut = transmittanceLutHandle;
+                    passData.skyAtmosphereParameters = parameterHandle;
+                    passData.multiScatteringLut = multiScatteringLutHandle;
+                    passData.groupX = (MultiScatteringLutWidth + 7) / 8;
+                    passData.groupY = (MultiScatteringLutHeight + 7) / 8;
+
+                    // 4.3. Set RenderFunc
+                    builder.SetRenderFunc(static (MultiScatteringLutPassData data, ComputeGraphContext ctx) =>
+                    {
+                        var cmd = ctx.cmd;
+                        cmd.SetComputeBufferParam(data.shader, data.kernel, "_SkyAtmosphereParametersBuffer",
+                            data.skyAtmosphereParameters);
+                        cmd.SetComputeTextureParam(data.shader, data.kernel, "_TransmittanceLut", data.transmittanceLut);
+                        cmd.SetComputeTextureParam(data.shader, data.kernel, "_MultiScatteringLutUAV",
+                            data.multiScatteringLut);
+                        cmd.DispatchCompute(data.shader, data.kernel, data.groupX, data.groupY, 1);
+                    });
+                }
+
+                // Consume the dirty flag now that both LUTs have been scheduled for recompute
+                sky.ClearDirty();
             }
 
-            // 4. Build MultiScatteringLUTGen Pass
-            using (var builder =
-                   renderGraph.AddComputePass<MultiScatteringLutPassData>("MultiScatteringLUTGen", out var passData))
-            {
-                // 4.1. Declare Used Resources
-                builder.UseTexture(transmittanceLutHandle, AccessFlags.Read);
-                builder.UseTexture(multiScatteringLutHandle, AccessFlags.Write);
-                builder.UseBuffer(parameterHandle, AccessFlags.Read);
-
-                // 4.2 Prepare Pass Data
-                passData.shader = computeShader;
-                passData.kernel = passData.shader.FindKernel("kComputeMultiScatteringLut");
-                passData.transmittanceLut = transmittanceLutHandle;
-                passData.skyAtmosphereParameters = parameterHandle;
-                passData.multiScatteringLut = multiScatteringLutHandle;
-                passData.groupX = (MultiScatteringLutWidth + 7) / 8;
-                passData.groupY = (MultiScatteringLutHeight + 7) / 8;
-
-                // 4.3. Set RenderFunc
-                builder.SetRenderFunc(static (MultiScatteringLutPassData data, ComputeGraphContext ctx) =>
-                {
-                    var cmd = ctx.cmd;
-                    cmd.SetComputeBufferParam(data.shader, data.kernel, "_SkyAtmosphereParametersBuffer",
-                        data.skyAtmosphereParameters);
-                    cmd.SetComputeTextureParam(data.shader, data.kernel, "_TransmittanceLut", data.transmittanceLut);
-                    cmd.SetComputeTextureParam(data.shader, data.kernel, "_MultiScatteringLutUAV",
-                        data.multiScatteringLut);
-                    cmd.DispatchCompute(data.shader, data.kernel, data.groupX, data.groupY, 1);
-                });
-            }
+            // 4.5  Async-read one texel from the TransmittanceLUT to drive
+            //      directional light colour / intensity on the CPU.
+            SunLightUpdater.RequestReadback(transmittanceLut.rt, sunDirection, Mathf.Max(0, camera.transform.position.y));
 
             // 5. Build Sky-View Lut Pass
             using (var builder = renderGraph.AddComputePass<SkyViewLutPassData>("SkyViewLutGen", out var passData))

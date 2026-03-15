@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 namespace TuringCat.Rendering.SkyAtomshpere
 {
@@ -19,6 +19,14 @@ namespace TuringCat.Rendering.SkyAtomshpere
         // ──────────────────────────────────────────────
         // Atmosphere parameters
         // ──────────────────────────────────────────────
+        [Header("Ref")]
+        public Light sun;
+        [Tooltip("Max intensity for the directional light (independent of sunPower used by shaders)")]
+        public float maxLightIntensity = 1.0f;
+        [Tooltip("Sun rotation speed in degrees per second")]
+        public float sunRotationSpeed = 1.0f;
+        [Tooltip("Allow the sun to rotate even when not in Play mode")]
+        public bool rotateInEditor = false;
 
         [Header("General")]
         public Color groundAlbedo = new Color(0.1f, 0.1f, 0.1f, 1.0f);
@@ -46,6 +54,24 @@ namespace TuringCat.Rendering.SkyAtomshpere
         public float fogScale = 10.0f;
 
         // ──────────────────────────────────────────────
+        // Dirty flag – set when atmosphere-only params change
+        // (Transmittance LUT & Multi-Scattering LUT depend on these)
+        // ──────────────────────────────────────────────
+
+        /// <summary>
+        /// True when atmosphere optical parameters have changed since the last
+        /// time ClearDirty() was called. RenderFeature uses this to decide
+        /// whether to re-compute the Transmittance LUT and Multi-Scattering LUT.
+        /// </summary>
+        public bool AtmosphereParamsDirty { get; private set; } = true;
+
+        /// <summary>Call this after consuming the dirty flag.</summary>
+        public void ClearDirty() => AtmosphereParamsDirty = false;
+
+        // Hash of atmosphere-only parameters from the previous frame
+        private int _lastAtmosphereHash;
+
+        // ──────────────────────────────────────────────
         // Internal
         // ──────────────────────────────────────────────
 
@@ -63,6 +89,11 @@ namespace TuringCat.Rendering.SkyAtomshpere
                 Debug.LogWarning("[SkyAtmosphere] Multiple SkyAtmosphere instances detected. Only one should exist.", this);
             }
             Instance = this;
+
+            // Force LUT recomputation after domain reload (script recompilation)
+            // because GPU textures are destroyed during reload even though
+            // the atmosphere parameters themselves haven't changed.
+            AtmosphereParamsDirty = true;
         }
 
         void OnDisable()
@@ -73,7 +104,38 @@ namespace TuringCat.Rendering.SkyAtomshpere
 
         void Update()
         {
+            // Rotate the sun around the X axis
+            if (sun != null && sunRotationSpeed != 0f && (Application.isPlaying || rotateInEditor))
+                sun.transform.Rotate(Vector3.right, sunRotationSpeed * Time.deltaTime, Space.World);
+
             Shader.SetGlobalFloat(FogScaleProperty, fogScale);
+
+            DynamicGI.UpdateEnvironment();
+
+            // Check whether atmosphere optical parameters changed this frame.
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 31 + bottom.GetHashCode();
+                hash = hash * 31 + top.GetHashCode();
+                hash = hash * 31 + rayleighScaleHeight.GetHashCode();
+                hash = hash * 31 + mieScaleHeight.GetHashCode();
+                hash = hash * 31 + ozoneCenter.GetHashCode();
+                hash = hash * 31 + ozoneHalfWidth.GetHashCode();
+                hash = hash * 31 + rayleighScattering.GetHashCode();
+                hash = hash * 31 + mieScattering.GetHashCode();
+                hash = hash * 31 + mieAbsorption.GetHashCode();
+                hash = hash * 31 + ozoneAbsorption.GetHashCode();
+                hash = hash * 31 + miePhaseFunctionG.GetHashCode();
+                hash = hash * 31 + groundAlbedo.GetHashCode();
+
+                if (hash != _lastAtmosphereHash)
+                {
+                    _lastAtmosphereHash = hash;
+                    AtmosphereParamsDirty = true;
+                }
+            }
+
         }
     }
 }
