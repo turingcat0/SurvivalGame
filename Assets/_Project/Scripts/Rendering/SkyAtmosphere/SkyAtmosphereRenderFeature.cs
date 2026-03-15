@@ -1,48 +1,21 @@
 using System;
 using System.Runtime.InteropServices;
+using TuringCat.Rendering.SkyAtomshpere;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using UnityEngine.Rendering.RenderGraphModule;
-using UnityEngine.Serialization;
 
 public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
 {
-    [Serializable]
-    public class SkyAtmosphereRenderFeatureSettings
-    {
-        public ComputeShader computeShader;
-        public Color groundAlbedo = new Color(0.1f, 0.1f, 0.1f, 1.0f);
-        public float sunPower = 1.0f;
+    [SerializeField] ComputeShader computeShader;
 
-        // Atmosphere Size
-        public float bottom = 6360.0f; //km
-        public float top = 6420.0f;  //km
-
-        // Intensity
-        public float rayleighScaleHeight = 8.0f;
-        public float mieScaleHeight = 1.2f;
-        public float ozoneCenter = 25.0f;
-        public float ozoneHalfWidth = 15.0f;
-
-        // Coefficient
-        // All from the paper "A Scalable and Production Ready Sky and Atmosphere Rendering Technique"
-        public Vector3 rayleighScattering = new Vector3(5.802e-3f, 13.558e-3f, 33.1e-3f);
-        public Vector3 mieScattering = new Vector3(3.996e-3f, 3.996e-3f, 3.996e-3f);
-        public Vector3 mieAbsorption = new Vector3(4.40e-3f, 4.40e-3f, 4.40e-3f);
-        public Vector3 ozoneAbsorption = new Vector3(0.650e-3f, 1.881e-3f, 0.085e-3f);
-        public float miePhaseFunctionG = 0.8f;
-        public float sunAngularRadius = 0.00935f / 2.0f;
-    }
-
-
-    [SerializeField] SkyAtmosphereRenderFeatureSettings settings;
     SkyAtmosphereRenderFeaturePass pass;
 
     public override void Create()
     {
-        pass = new SkyAtmosphereRenderFeaturePass(settings);
+        pass = new SkyAtmosphereRenderFeaturePass(computeShader);
 
         // Configures where the render pass should be injected.
         pass.renderPassEvent = RenderPassEvent.BeforeRendering;
@@ -60,7 +33,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
 
     class SkyAtmosphereRenderFeaturePass : ScriptableRenderPass
     {
-        readonly SkyAtmosphereRenderFeatureSettings settings;
+        readonly ComputeShader computeShader;
 
         private GraphicsBuffer skyAtmosphereParametersBuffer;
 
@@ -77,9 +50,9 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
         private const int SkyViewLutHeight = 2048;
         private const int AerialPerspectiveLutSize = 32;
 
-        public SkyAtmosphereRenderFeaturePass(SkyAtmosphereRenderFeatureSettings settings)
+        public SkyAtmosphereRenderFeaturePass(ComputeShader computeShader)
         {
-            this.settings = settings;
+            this.computeShader = computeShader;
         }
 
         private void EnsureResources()
@@ -127,21 +100,25 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             );
         }
 
+        /// <summary>
+        /// Build the GPU constant buffer by reading parameters from SkyAtmosphere.Instance.
+        /// </summary>
         private SkyAtmosphereBuffer BuildSkyAtmosphereBuffer(Vector3 sunAngle, float cameraY)
         {
+            var sky = SkyAtmosphere.Instance;
             return new SkyAtmosphereBuffer
             {
-                atmospherePositionPacked = new Vector4(settings.bottom, settings.top, cameraY / 1000 /* km */, settings.sunPower),
-                sunParameterPacked = new Vector4(sunAngle.x, sunAngle.y, sunAngle.z, settings.sunAngularRadius),
-                densityProfilePacked = new Vector4(1.0f / settings.rayleighScaleHeight, 1.0f / settings.mieScaleHeight,
-                    settings.ozoneCenter, settings.ozoneHalfWidth),
-                rayleighScattering = new Vector4(settings.rayleighScattering.x, settings.rayleighScattering.y,
-                    settings.rayleighScattering.z, 1.0f),
-                mieScatteringPacked = new Vector4(settings.mieScattering.x, settings.mieScattering.y,
-                    settings.mieScattering.z, settings.miePhaseFunctionG),
-                mieAbsorption = settings.mieAbsorption,
-                ozoneAbsorption = settings.ozoneAbsorption,
-                groundAlbedo = settings.groundAlbedo
+                atmospherePositionPacked = new Vector4(sky.bottom, sky.top, cameraY / 1000 /* km */, sky.sunPower),
+                sunParameterPacked = new Vector4(sunAngle.x, sunAngle.y, sunAngle.z, sky.sunAngularRadius),
+                densityProfilePacked = new Vector4(1.0f / sky.rayleighScaleHeight, 1.0f / sky.mieScaleHeight,
+                    sky.ozoneCenter, sky.ozoneHalfWidth),
+                rayleighScattering = new Vector4(sky.rayleighScattering.x, sky.rayleighScattering.y,
+                    sky.rayleighScattering.z, 1.0f),
+                mieScatteringPacked = new Vector4(sky.mieScattering.x, sky.mieScattering.y,
+                    sky.mieScattering.z, sky.miePhaseFunctionG),
+                mieAbsorption = sky.mieAbsorption,
+                ozoneAbsorption = sky.ozoneAbsorption,
+                groundAlbedo = sky.groundAlbedo
             };
         }
 
@@ -205,6 +182,10 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
 
         public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
         {
+            // Skip rendering if no SkyAtmosphere singleton exists
+            if (SkyAtmosphere.Instance == null)
+                return;
+
             // 1. Update Atmosphere Buffer
             EnsureResources();
             var cameraData = frameData.Get<UniversalCameraData>();
@@ -238,7 +219,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 builder.UseBuffer(parameterHandle, AccessFlags.Read);
 
                 // 3.2. Prepare Pass Data
-                passData.shader = settings.computeShader;
+                passData.shader = computeShader;
                 passData.kernel = passData.shader.FindKernel("kComputeTransmittanceLut");
 
                 passData.transmittanceLut = transmittanceLutHandle;
@@ -270,7 +251,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 builder.UseBuffer(parameterHandle, AccessFlags.Read);
 
                 // 4.2 Prepare Pass Data
-                passData.shader = settings.computeShader;
+                passData.shader = computeShader;
                 passData.kernel = passData.shader.FindKernel("kComputeMultiScatteringLut");
                 passData.transmittanceLut = transmittanceLutHandle;
                 passData.skyAtmosphereParameters = parameterHandle;
@@ -301,7 +282,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 builder.AllowGlobalStateModification(true);
 
                 // 5.2 Prepare Pass Data
-                passData.shader = settings.computeShader;
+                passData.shader = computeShader;
                 passData.kernel = passData.shader.FindKernel("kComputeSkyViewLut");
                 passData.skyAtmosphereParameters = parameterHandle;
                 passData.groupX = (SkyViewLutWidth + 7) / 8;
@@ -338,7 +319,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 builder.AllowGlobalStateModification(true);
 
                 // 6.2 Prepare Pass Data
-                passData.shader = settings.computeShader;
+                passData.shader = computeShader;
                 passData.kernel =  passData.shader.FindKernel("kComputeAerialPerspectiveLut");
                 passData.skyAtmosphereParameters = parameterHandle;
                 passData.transmittanceLut =  transmittanceLutHandle;
@@ -385,4 +366,3 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
         public Vector4 groundAlbedo;
     }
 }
-
