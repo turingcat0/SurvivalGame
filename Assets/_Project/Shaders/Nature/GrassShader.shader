@@ -126,6 +126,7 @@ Shader "TuringCat/Nature/Grass"
             Varyings vert(Attributes IN)
             {
                 Varyings OUT;
+                ZERO_INITIALIZE(Varyings, OUT);
                 UNITY_SETUP_INSTANCE_ID(IN);
                 UNITY_TRANSFER_INSTANCE_ID(IN, OUT);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
@@ -156,7 +157,7 @@ Shader "TuringCat/Nature/Grass"
 
                 float3 ws = OUT.positionWS;
                 #ifdef USE_INTERACTION
-                animScale -= pow(ApplyInteraction(OUT.positionWS, IN.positionOS, IN.color.r), 5.0f);
+                animScale -= pow(ApplyInteraction(OUT.positionWS, IN.positionOS.xyz, IN.color.r), 5.0f);
                 #endif
 
                 #ifdef USE_AN
@@ -173,6 +174,8 @@ Shader "TuringCat/Nature/Grass"
                 OUT.tbn0 = normalInputs.tangentWS;
                 OUT.tbn1 = normalInputs.bitangentWS;
                 OUT.tbn2 = normalInputs.normalWS;
+
+                OUT.vertexFog = GetAerialPerspectiveFogVertex(ComputeScreenPos(OUT.positionHCS), OUT.positionWS);
 
                 return OUT;
             }
@@ -304,6 +307,7 @@ Shader "TuringCat/Nature/Grass"
             Varings shadowVert(Attributes attr)
             {
                 Varings OUT;
+                ZERO_INITIALIZE(Varings, OUT);
                 UNITY_SETUP_INSTANCE_ID(attr);
                 UNITY_TRANSFER_INSTANCE_ID(attr, OUT);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
@@ -333,7 +337,7 @@ Shader "TuringCat/Nature/Grass"
 
                 float3 ws = worldPos;
                 #ifdef USE_INTERACTION
-                animScale -= pow(ApplyInteraction(worldPos, attr.posOS, attr.color.r), 5.0f);
+                animScale -= pow(ApplyInteraction(worldPos, attr.posOS.xyz, attr.color.r), 5.0f);
                 #endif
 
                 #ifdef USE_AN
