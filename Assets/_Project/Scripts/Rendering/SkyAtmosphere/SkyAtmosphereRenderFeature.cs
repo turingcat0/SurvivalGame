@@ -47,8 +47,8 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
         private const int TransmittanceLutHeight = 64;
         private const int MultiScatteringLutWidth = 32;
         private const int MultiScatteringLutHeight = 32;
-        private const int SkyViewLutWidth = 200;
-        private const int SkyViewLutHeight = 100;
+        private const int SkyViewLutWidth = 1024;
+        private const int SkyViewLutHeight = 1024;
         private const int AerialPerspectiveLutSize = 32;
 
         public SkyAtmosphereRenderFeaturePass(ComputeShader computeShader)
@@ -114,11 +114,15 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 sunParameterPacked = new Vector4(sunAngle.x, sunAngle.y, sunAngle.z, sky.sunAngularRadius),
                 densityProfilePacked = new Vector4(1.0f / sky.rayleighScaleHeight, 1.0f / sky.mieScaleHeight,
                     sky.ozoneCenter, sky.ozoneHalfWidth),
-                rayleighScattering = new Vector4(sky.rayleighScattering.x, sky.rayleighScattering.y,
-                    sky.rayleighScattering.z, 1.0f),
-                mieScatteringPacked = new Vector4(sky.mieScattering.x, sky.mieScattering.y,
-                    sky.mieScattering.z, sky.miePhaseFunctionG),
-                mieAbsorption = sky.mieAbsorption,
+                rayleighScattering = new Vector4(
+                    sky.rayleighScattering.x * sky.rayleighMultiplier, 
+                    sky.rayleighScattering.y * sky.rayleighMultiplier,
+                    sky.rayleighScattering.z * sky.rayleighMultiplier, 1.0f),
+                mieScatteringPacked = new Vector4(
+                    sky.mieScattering.x * sky.mieMultiplier, 
+                    sky.mieScattering.y * sky.mieMultiplier,
+                    sky.mieScattering.z * sky.mieMultiplier, sky.miePhaseFunctionG),
+                mieAbsorption = sky.mieAbsorption * sky.mieMultiplier,
                 ozoneAbsorption = sky.ozoneAbsorption,
                 groundAlbedo = sky.groundAlbedo
             };

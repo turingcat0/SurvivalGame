@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace TuringCat.Rendering.SkyAtomshpere
 {
@@ -43,10 +43,15 @@ namespace TuringCat.Rendering.SkyAtomshpere
         public float ozoneHalfWidth = 15.0f;
 
         [Header("Scattering & Absorption Coefficients")]
+        [Tooltip("Multiplier for Rayleigh scattering (simulates air density)")]
+        public float rayleighMultiplier = 1.0f;
+        [Tooltip("Multiplier for Mie scattering and absorption (simulates aerosols/turbidity)")]
+        public float mieMultiplier = 1.0f;
         public Vector3 rayleighScattering = new Vector3(5.802e-3f, 13.558e-3f, 33.1e-3f);
         public Vector3 mieScattering = new Vector3(3.996e-3f, 3.996e-3f, 3.996e-3f);
         public Vector3 mieAbsorption = new Vector3(4.40e-3f, 4.40e-3f, 4.40e-3f);
         public Vector3 ozoneAbsorption = new Vector3(0.650e-3f, 1.881e-3f, 0.085e-3f);
+        [Range(0f, 1f)]
         public float miePhaseFunctionG = 0.8f;
         public float sunAngularRadius = 0.00935f / 2.0f;
 
@@ -122,6 +127,8 @@ namespace TuringCat.Rendering.SkyAtomshpere
                 hash = hash * 31 + mieScaleHeight.GetHashCode();
                 hash = hash * 31 + ozoneCenter.GetHashCode();
                 hash = hash * 31 + ozoneHalfWidth.GetHashCode();
+                hash = hash * 31 + rayleighMultiplier.GetHashCode();
+                hash = hash * 31 + mieMultiplier.GetHashCode();
                 hash = hash * 31 + rayleighScattering.GetHashCode();
                 hash = hash * 31 + mieScattering.GetHashCode();
                 hash = hash * 31 + mieAbsorption.GetHashCode();
