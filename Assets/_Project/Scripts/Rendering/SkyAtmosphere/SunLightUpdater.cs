@@ -131,6 +131,14 @@ public static class SunLightUpdater
             OnReadbackComplete);
     }
 
+    // UE5 Working Color Space (ACEScg/AP1) back to sRGB.
+    static readonly Matrix4x4 ACEScg_to_sRGB = new Matrix4x4(
+        new Vector4(1.7050f, -0.1303f, -0.0240f, 0f), // col 0
+        new Vector4(-0.6218f, 1.1407f, -0.1290f, 0f), // col 1
+        new Vector4(-0.0832f, -0.0104f, 1.1530f, 0f), // col 2
+        new Vector4(0f, 0f, 0f, 1f) // col 3
+    );
+
     private static void OnReadbackComplete(AsyncGPUReadbackRequest request)
     {
         _readbackPending = false;
@@ -146,13 +154,15 @@ public static class SunLightUpdater
 
         Color trans = pixels[0];
 
-        // Apply the transmittance directly as the light colour.
-        // The transmittance naturally ranges [0,1] per channel; at noon it's
-        // near-white, at sunset blue is heavily absorbed leaving warm tones.
-        // Intensity is controlled separately by maxLightIntensity * visibility.
-        // Note: Transmittance is in Linear space. Light.color API expects a Gamma space
-        // color when the project is in Linear color space.
-        sky.sun.color = new Color(trans.r, trans.g, trans.b, 1f).gamma;
+        // The transmittance acts as the color of a white sun.
+        // Since LUTs are now computed in ACEScg working color space (like UE5), we must convert it back to sRGB.
+        Vector3 transWorking = new Vector3(trans.r, trans.g, trans.b);
+        Vector3 transSRGB = ACEScg_to_sRGB.MultiplyVector(transWorking);
+        transSRGB.x = Mathf.Max(0f, transSRGB.x);
+        transSRGB.y = Mathf.Max(0f, transSRGB.y);
+        transSRGB.z = Mathf.Max(0f, transSRGB.z);
+
+        sky.sun.color = new Color(transSRGB.x, transSRGB.y, transSRGB.z, 1f).gamma;
         sky.sun.intensity = sky.maxLightIntensity * _lastVisibility;
     }
 }

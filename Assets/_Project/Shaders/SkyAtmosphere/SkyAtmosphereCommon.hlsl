@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright (c) 2017 Eric Bruneton
  * All rights reserved.
  *
@@ -58,6 +58,7 @@
 #ifndef SKY_ATMOSPHERE_COMMON_H
 #define SKY_ATMOSPHERE_COMMON_H
 #include "../Common.hlsl"
+#include "ColorSpaces.hlsl"
 
 #define MAX_AERIAL_DISTANCE 16
 
@@ -75,6 +76,16 @@ struct SkyAtmosphereParameters
     float4 groundAlbedo;
 };
 
+// Converts standard sRGB parameters from CPU to AP1 Working Color Space automatically
+inline SkyAtmosphereParameters GetWorkingSkyAtmosphereParameters(SkyAtmosphereParameters p)
+{
+    p.rayleighScattering.xyz = ConvertCoefficients_sRGB_to_Working(p.rayleighScattering.xyz);
+    p.mieScatteringPacked.xyz = ConvertCoefficients_sRGB_to_Working(p.mieScatteringPacked.xyz);
+    p.mieAbsorption.xyz = ConvertCoefficients_sRGB_to_Working(p.mieAbsorption.xyz);
+    p.ozoneAbsorption.xyz = ConvertCoefficients_sRGB_to_Working(p.ozoneAbsorption.xyz);
+    p.groundAlbedo.xyz = ConvertColor_sRGB_to_Working(p.groundAlbedo.xyz);
+    return p;
+}
 
 float GetRayleighIntensity(in SkyAtmosphereParameters skyAtmosphere, in float altitude)
 {

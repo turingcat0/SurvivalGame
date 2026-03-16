@@ -86,11 +86,10 @@ float3 GetTransmittance(in SkyAtmosphereParameters skyAtmosphere, float r,
 float3 GetTransmittanceToSun(in SkyAtmosphereParameters skyAtmosphere, float r,
                              float mu)
 {
-    float sinThetaH = saturate(GetAtmosphereBottom(skyAtmosphere) / r);
-    float cosThetaH = -sqrt(1 - sinThetaH * sinThetaH);
-    float visibility = smoothstep(-sinThetaH * GetSunAngular(skyAtmosphere), sinThetaH * GetSunAngular(skyAtmosphere),
-                                  mu - cosThetaH);
-    return GetTransmittanceToTopBoundary(skyAtmosphere, r, mu) * visibility;
+    // UE5 approach: TransmittanceLUT does NOT contain planet shadow at all
+    // Planet shadow will be handled separately during scattering integration
+    // This prevents interpolation artifacts in low-resolution LUTs
+    return GetTransmittanceToTopBoundary(skyAtmosphere, r, mu);
 }
 
 float3 GetMultiScattering(in SkyAtmosphereParameters skyAtmosphere, float r, float mu)
@@ -104,7 +103,7 @@ float3 GetMultiScattering(in SkyAtmosphereParameters skyAtmosphere, float r, flo
 [numthreads(16, 16, 1)]
 void kComputeTransmittanceLut(uint3 id : SV_DispatchThreadID)
 {
-    SkyAtmosphereParameters skyAtmosphereParameters = _SkyAtmosphereParametersBuffer[0];
+    SkyAtmosphereParameters skyAtmosphereParameters = GetWorkingSkyAtmosphereParameters(_SkyAtmosphereParametersBuffer[0]);
 
     uint2 size;
     _TransmittanceLutUAV.GetDimensions(size.x, size.y);
@@ -133,7 +132,7 @@ void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
     {
         return;
     }
-    SkyAtmosphereParameters skyAtmosphereParameters = _SkyAtmosphereParametersBuffer[0];
+    SkyAtmosphereParameters skyAtmosphereParameters = GetWorkingSkyAtmosphereParameters(_SkyAtmosphereParametersBuffer[0]);
     float2 uv = (id.xy + 0.5f) / size.xy;
     float r = GetAtmosphereBottom(skyAtmosphereParameters) + uv.y * GetAtmosphereHeight(skyAtmosphereParameters);
     float cosTheta = GetUnitRange(uv.x);
@@ -166,6 +165,11 @@ void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
             float3 transmittance = GetTransmittance(skyAtmosphereParameters, r_i, mu_i, d_i,
                                                     intersects);
             float3 sunPower = GetTransmittanceToSun(skyAtmosphereParameters, r_i, sun_mu_i);
+
+            // Planet shadow check
+            bool sunOccluded = RayIntersectsGround(skyAtmosphereParameters, r_i, sun_mu_i);
+            float planetShadow = sunOccluded ? 0.0f : 1.0f;
+
             float weight = i == 0 || i == MULTI_SCATTERING_STEPS ? 0.5 : 1;
 
             float3 rayleighScattering = GetRayleighIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.
@@ -173,7 +177,7 @@ void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
             float3 mieScattering = GetMieIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.
                 mieScatteringPacked.xyz;
 
-            l2Scattering += transmittance * sunPower * (rayleighScattering + mieScattering) * phaseL2 * weight * dx;
+            l2Scattering += transmittance * sunPower * planetShadow * (rayleighScattering + mieScattering) * phaseL2 * weight * dx;
             ms += transmittance * (rayleighScattering + mieScattering) * weight * dx;
         }
         if (intersects)
@@ -182,10 +186,15 @@ void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
             float hitR = GetAtmosphereBottom(skyAtmosphereParameters);
             float nDl = saturate(dot(sunRay, hitPos) / hitR);
             float3 transmittanceToSun = GetTransmittanceToSun(skyAtmosphereParameters, hitR, nDl);
+
+            // Ground reflection also needs planet shadow check
+            bool groundInShadow = RayIntersectsGround(skyAtmosphereParameters, hitR, nDl);
+            float planetShadow = groundInShadow ? 0.0f : 1.0f;
+
             float3 transmittance = GetTransmittance(skyAtmosphereParameters, r, r_mu, distance, intersects);
             float3 albedo = GetGroundAlbedo(skyAtmosphereParameters);
 
-            l2Scattering += albedo * transmittanceToSun * nDl * transmittance / PI_;
+            l2Scattering += albedo * transmittanceToSun * planetShadow * nDl * transmittance / PI_;
         }
     }
     l2Scattering *= phaseL2 * 4 * PI_ / MULTI_SCATTERING_RAYS;
@@ -203,7 +212,7 @@ void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
     {
         return;
     }
-    SkyAtmosphereParameters skyAtmosphereParameters = _SkyAtmosphereParametersBuffer[0];
+    SkyAtmosphereParameters skyAtmosphereParameters = GetWorkingSkyAtmosphereParameters(_SkyAtmosphereParametersBuffer[0]);
     float2 uv = (id.xy + 0.5f) / size.xy;
     float bottom = GetAtmosphereBottom(skyAtmosphereParameters);
     float top = GetAtmosphereTop(skyAtmosphereParameters);
@@ -256,8 +265,14 @@ void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
 
         float3 transmittanceToSun_i = GetTransmittanceToSun(skyAtmosphereParameters, r_i, sun_mu_i);
 
-        float3 singleScattering_i = (rayleighScattering * phaseRayleigh + mieScattering * phaseMie) * transmittanceToSun_i;
-        float3 multiScattering_i = GetMultiScattering(skyAtmosphereParameters, r_i, sun_mu_i) * (rayleighScattering + mieScattering);
+        // UE5-style planet shadow: analytically compute if sun is occluded by planet
+        // This creates the soft twilight transition by naturally accumulating scattering
+        // where the sun is visible and cutting off where it's blocked
+        bool sunOccluded = RayIntersectsGround(skyAtmosphereParameters, r_i, sun_mu_i);
+        float planetShadow = sunOccluded ? 0.0f : 1.0f;
+
+        float3 singleScattering_i = (rayleighScattering * phaseRayleigh + mieScattering * phaseMie) * transmittanceToSun_i * planetShadow;
+        float3 multiScattering_i = GetMultiScattering(skyAtmosphereParameters, r_i, sun_mu_i) * (rayleighScattering + mieScattering) * planetShadow;
 
         float weight = (i == 0 || i == SKY_VIEW_STEPS) ? 0.5f : 1.0f;
         finalColor += transmittance_i * (singleScattering_i + multiScattering_i) * dx * weight;
@@ -279,7 +294,7 @@ void kComputeAerialPerspectiveLut(uint3 id : SV_DispatchThreadID)
     {
         return;
     }
-    SkyAtmosphereParameters skyAtmosphereParameters = _SkyAtmosphereParametersBuffer[0];
+    SkyAtmosphereParameters skyAtmosphereParameters = GetWorkingSkyAtmosphereParameters(_SkyAtmosphereParametersBuffer[0]);
     float2 uv = (id.xy + 0.5f) / size.xy;
     float2 ndc = uv * 2.0f - 1.0f;
 
@@ -325,8 +340,12 @@ void kComputeAerialPerspectiveLut(uint3 id : SV_DispatchThreadID)
 
         float3 transmittanceToSun_i = GetTransmittanceToSun(skyAtmosphereParameters, max(r_i, bottom + 0.001f), sun_mu_i);
 
-        float3 singleScattering_i = (rayleighScattering * phaseRayleigh + mieScattering * phaseMie) * transmittanceToSun_i;
-        float3 multiScattering_i = GetMultiScattering(skyAtmosphereParameters, max(r_i, bottom + 0.001f), sun_mu_i) * (rayleighScattering + mieScattering);
+        // Planet shadow check (same as SkyView LUT)
+        bool sunOccluded = RayIntersectsGround(skyAtmosphereParameters, r_i, sun_mu_i);
+        float planetShadow = sunOccluded ? 0.0f : 1.0f;
+
+        float3 singleScattering_i = (rayleighScattering * phaseRayleigh + mieScattering * phaseMie) * transmittanceToSun_i * planetShadow;
+        float3 multiScattering_i = GetMultiScattering(skyAtmosphereParameters, max(r_i, bottom + 0.001f), sun_mu_i) * (rayleighScattering + mieScattering) * planetShadow;
 
         float weight = (i == 0 || i == AERIAL_PERSPECTIVE_STEPS) ? 0.5f : 1.0f;
         finalColor += transmittance_i * (singleScattering_i + multiScattering_i) * dx * weight;

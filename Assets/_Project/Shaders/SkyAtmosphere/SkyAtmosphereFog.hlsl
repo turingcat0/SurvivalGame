@@ -1,4 +1,4 @@
-﻿#ifndef SKY_ATMOSPHERE_FOG_H
+#ifndef SKY_ATMOSPHERE_FOG_H
 #define SKY_ATMOSPHERE_FOG_H
 
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
@@ -27,6 +27,7 @@ float4 GetAerialPerspectiveFogVertex(float4 positionNDC, float3 positionWS)
 
 float3 ApplyAerialPerspective(float3 objectColor, float4 vertexFog)
 {
-    return objectColor * vertexFog.a + vertexFog.rgb;
+    float3 fogColorSrgb = ConvertColor_Working_to_sRGB(vertexFog.rgb);
+    return objectColor * vertexFog.a + fogColorSrgb;
 }
 #endif

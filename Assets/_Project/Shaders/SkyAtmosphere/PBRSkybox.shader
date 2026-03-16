@@ -88,6 +88,7 @@ xyz;
                     }
                 }
 
+                skyColor = ConvertColor_Working_to_sRGB(skyColor);
                 return float4(skyColor, 1.0);
             }
             ENDHLSL
