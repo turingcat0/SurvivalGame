@@ -103,6 +103,9 @@ public static class SunLightUpdater
         // in C# compared to the visually correct sun disc in the shader.
         _lastVisibility = GetSunVisibility(sky.bottom, r, mu, sky.sunAngularRadius * 10.0f);
 
+        float moonVisibility = 1 - _lastVisibility;
+        sky.moon.intensity = moonVisibility * sky.moonPower;
+
         // If fully occluded, force intensity to 0 immediately and skip readback
         if (_lastVisibility < 1e-6f)
         {

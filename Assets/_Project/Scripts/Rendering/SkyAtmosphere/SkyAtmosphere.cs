@@ -21,6 +21,8 @@ namespace TuringCat.Rendering.SkyAtomshpere
         // ──────────────────────────────────────────────
         [Header("Ref")]
         public Light sun;
+
+        public Light moon;
         [Tooltip("Max intensity for the directional light (independent of sunPower used by shaders)")]
         public float maxLightIntensity = 1.0f;
         [Tooltip("Sun rotation speed in degrees per second")]
@@ -31,6 +33,7 @@ namespace TuringCat.Rendering.SkyAtomshpere
         [Header("General")]
         public Color groundAlbedo = new Color(0.1f, 0.1f, 0.1f, 1.0f);
         public float sunPower = 1.0f;
+        public float moonPower = 1.0f;
 
         [Header("Atmosphere Size (km)")]
         public float bottom = 6360.0f;
@@ -111,7 +114,14 @@ namespace TuringCat.Rendering.SkyAtomshpere
         {
             // Rotate the sun around the X axis
             if (sun != null && sunRotationSpeed != 0f && (Application.isPlaying || rotateInEditor))
+            {
                 sun.transform.Rotate(Vector3.right, sunRotationSpeed * Time.deltaTime, Space.World);
+
+            }
+            if (sun != null && moon != null)
+            {
+                moon.transform.rotation = sun.transform.rotation * Quaternion.Euler(180f, 0f, 0f);
+            }
 
             Shader.SetGlobalFloat(FogScaleProperty, fogScale);
 

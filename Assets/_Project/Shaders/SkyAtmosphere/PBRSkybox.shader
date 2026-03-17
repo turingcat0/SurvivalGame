@@ -1,5 +1,9 @@
 Shader "TuringCat/SkyAtmosphere/Skybox"
 {
+    Properties
+    {
+        _MoonColor("Moon Color", Color) = (0.5, 0.5, 0.5, 1)
+    }
     SubShader
     {
         Tags
@@ -34,6 +38,7 @@ Shader "TuringCat/SkyAtmosphere/Skybox"
             SAMPLER(sampler_SkyViewLut);
             TEXTURE2D(_TransmittanceLut);
             SAMPLER(sampler_TransmittanceLut);
+            float3 _MoonColor;
 
             StructuredBuffer<SkyAtmosphereParameters> _SkyAtmosphereParametersBuffer;
 
@@ -85,6 +90,21 @@ xyz;
                         float3 finalSunColor = sunLuminance * transmittance * sunDisk;
 
                         skyColor += finalSunColor;
+                    }
+                }
+
+                 float cosMoonRadius = cos(sunAngularRadius * 1.2f);
+                float3 moonDir = -sunDir;
+                float cosThetaMoon = dot(V, moonDir);
+                float moonDisk = smoothstep(cosMoonRadius - 0.0001, cosMoonRadius + 0.0001, cosThetaMoon);
+
+                if (moonDisk > 0.0)
+                {
+                    float r = GetAtmosphereBottom(params) + GetCameraY(params);
+                    if (!RayIntersectsGround(params, r, mu))
+                    {
+                        float horizonFade = smoothstep(0.02, 0.5, V.y);
+                        skyColor += _MoonColor * moonDisk * horizonFade;
                     }
                 }
 

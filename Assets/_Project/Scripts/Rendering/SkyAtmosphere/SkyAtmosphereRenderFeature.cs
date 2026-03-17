@@ -230,7 +230,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
             // or camera position), so we skip them when the atmosphere parameters have
             // not changed since the last frame.
             bool needAtmosphereLuts = sky.AtmosphereParamsDirty;
-            // if (needAtmosphereLuts)
+            if (needAtmosphereLuts)
             {
                 // 3. Build TransmittanceLUTGen Pass
                 using (var builder =
