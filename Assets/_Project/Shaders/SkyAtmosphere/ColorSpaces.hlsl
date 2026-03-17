@@ -19,11 +19,13 @@
 // Basic Color Transformations (Linear)
 inline float3 ConvertColor_sRGB_to_Working(float3 color_sRGB)
 {
+    return color_sRGB;
     return mul(sRGB_2_ACEScg, color_sRGB);
 }
 
 inline float3 ConvertColor_Working_to_sRGB(float3 color_Working)
 {
+    return color_Working;
     return mul(ACEScg_2_sRGB, color_Working);
 }
 
@@ -31,6 +33,7 @@ inline float3 ConvertColor_Working_to_sRGB(float3 color_Working)
 // Exact match to UE5's ConvertCoefficientsFromSRGBToWorkingColorSpace
 inline float3 ConvertCoefficients_sRGB_to_Working(float3 coeff_sRGB)
 {
+    return coeff_sRGB;
     // 1. Convert extinction to transmittance
     float3 transmittance = exp(-coeff_sRGB);
     
