@@ -47,8 +47,8 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
         private const int TransmittanceLutHeight = 64;
         private const int MultiScatteringLutWidth = 32;
         private const int MultiScatteringLutHeight = 32;
-        private const int SkyViewLutWidth = 1024;
-        private const int SkyViewLutHeight = 1024;
+        private const int SkyViewLutWidth = 200;
+        private const int SkyViewLutHeight = 100;
         private const int AerialPerspectiveLutSize = 32;
 
         public SkyAtmosphereRenderFeaturePass(ComputeShader computeShader)
@@ -278,8 +278,8 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                     passData.transmittanceLut = transmittanceLutHandle;
                     passData.skyAtmosphereParameters = parameterHandle;
                     passData.multiScatteringLut = multiScatteringLutHandle;
-                    passData.groupX = (MultiScatteringLutWidth + 7) / 8;
-                    passData.groupY = (MultiScatteringLutHeight + 7) / 8;
+                    passData.groupX = MultiScatteringLutWidth ;
+                    passData.groupY = MultiScatteringLutHeight;
 
                     // 4.3. Set RenderFunc
                     builder.SetRenderFunc(static (MultiScatteringLutPassData data, ComputeGraphContext ctx) =>
@@ -357,7 +357,7 @@ public class SkyAtmosphereRenderFeature : ScriptableRendererFeature
                 passData.aerialPerspectiveLut = aerialPerspectiveLuteHandle;
                 passData.groupX = (AerialPerspectiveLutSize + 7) / 8;
                 passData.groupY = (AerialPerspectiveLutSize + 7) / 8;
-                passData.groupZ = (AerialPerspectiveLutSize + 7) / 8;
+                passData.groupZ = (AerialPerspectiveLutSize + 3) / 4;
 
                 var viewProjMatrix = GL.GetGPUProjectionMatrix(camera.projectionMatrix, false) * camera.worldToCameraMatrix;
                 passData.inverseViewProjMat = viewProjMatrix.inverse;

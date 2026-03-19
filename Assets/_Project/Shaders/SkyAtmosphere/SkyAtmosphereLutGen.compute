@@ -1,4 +1,6 @@
 #include "SkyAtmosphereCommon.hlsl"
+#pragma require wavebasic
+#pragma use_dxc
 
 #pragma kernel kComputeTransmittanceLut
 #pragma kernel kComputeMultiScatteringLut
@@ -29,6 +31,8 @@ float3 GetTransmittanceToBoundary(in SkyAtmosphereParameters skyAtmosphereParame
 {
     float distance = DistanceToTopAtmosphereBoundary(GetAtmosphereTop(skyAtmosphereParameters), r, mu);
     float dx = distance / TRANSMITTANCE_STEPS;
+    float3 mieExtCoeff = skyAtmosphereParameters.mieScatteringPacked.xyz
+                   + skyAtmosphereParameters.mieAbsorption.xyz;
 
     float3 result = 0.0f;
     for (int i = 0; i <= TRANSMITTANCE_STEPS; ++i)
@@ -44,7 +48,7 @@ float3 GetTransmittanceToBoundary(in SkyAtmosphereParameters skyAtmosphereParame
                                                     h_i);
         float weight_i = (i == 0 || i == TRANSMITTANCE_STEPS) ? 0.5f : 1.0f;
         result += skyAtmosphereParameters.rayleighScattering.xyz * intensity_rayleigh_i * weight_i * dx;
-        result += (skyAtmosphereParameters.mieScatteringPacked.xyz + skyAtmosphereParameters.mieAbsorption.xyz) *
+        result += mieExtCoeff *
             intensity_mie_i * weight_i * dx;
         result += skyAtmosphereParameters.ozoneAbsorption.xyz * intensity_ozone_i * weight_i * dx;
     }
@@ -81,6 +85,16 @@ float3 GetTransmittance(in SkyAtmosphereParameters skyAtmosphere, float r,
             GetTransmittanceToTopBoundary(skyAtmosphere, r, mu) / GetTransmittanceToTopBoundary(
                 skyAtmosphere, r_d, mu_d));
     }
+}
+float3 GetTransmittanceToTopBoundaryFast(
+    in SkyAtmosphereParameters skyAtmosphere,
+    float r, float mu, uint texW, uint texH)
+{
+    float2 uv = GetTransmittanceTextureUvFromRMu(
+        GetAtmosphereBottom(skyAtmosphere),
+        GetAtmosphereTop(skyAtmosphere),
+        r, mu, texW, texH);
+    return _TransmittanceLut.SampleLevel(sampler_TransmittanceLut, uv, 0).xyz;
 }
 
 
@@ -134,97 +148,193 @@ void kComputeTransmittanceLut(uint3 id : SV_DispatchThreadID)
     _TransmittanceLutUAV[id.xy] = float4(transmittance, 1.0f);
 }
 
-[numthreads(8, 8, 1)]
-void kComputeMultiScatteringLut(uint3 id : SV_DispatchThreadID)
+
+// Optimized from 0.02278ms to 0.00271ms
+[numthreads(32, 1, 1)]
+void kComputeMultiScatteringLut(uint3 groupId : SV_GroupID,
+                                 uint gi : SV_GroupIndex)
 {
+    uint2 pixelId = groupId.xy;
+
     uint2 size;
     _MultiScatteringLutUAV.GetDimensions(size.x, size.y);
-    if (id.x >= size.x || id.y >= size.y)
-    {
+    if (pixelId.x >= size.x || pixelId.y >= size.y)
         return;
-    }
-    SkyAtmosphereParameters skyAtmosphereParameters = GetWorkingSkyAtmosphereParameters(_SkyAtmosphereParametersBuffer[0]);
-    float2 uv = (id.xy + 0.5f) / size.xy;
-    float r = GetAtmosphereBottom(skyAtmosphereParameters) + uv.y * GetAtmosphereHeight(skyAtmosphereParameters);
+
+    SkyAtmosphereParameters params = GetWorkingSkyAtmosphereParameters(
+        _SkyAtmosphereParametersBuffer[0]);
+
+    float bottomR = GetAtmosphereBottom(params);
+    float topR = GetAtmosphereTop(params);
+
+    uint transmittanceW, transmittanceH;
+    _TransmittanceLut.GetDimensions(transmittanceW, transmittanceH);
+
+    float3 rayleighExtCoeff = params.rayleighScattering.xyz;
+    float3 mieScatCoeff = params.mieScatteringPacked.xyz;
+    float3 mieExtCoeff = mieScatCoeff + params.mieAbsorption.xyz;
+    float3 ozoneAbsCoeff = params.ozoneAbsorption.xyz;
+    float3 groundAlbedo = GetGroundAlbedo(params);
+    float sunAngularRadius = GetSunAngular(params);
+    float scaleR = params.densityProfilePacked.x;
+    float scaleM = params.densityProfilePacked.y;
+    float ozoneCenter = params.densityProfilePacked.z;
+    float ozoneHalfWidth = params.densityProfilePacked.w;
+    float invOzoneHalfWidth = 1.0 / max(ozoneHalfWidth, 0.0001);
+    float bottomR2 = bottomR * bottomR;
+    const float phaseL2 = 1.0 / (4.0 * PI_);
+
+    float2 uv = (pixelId + 0.5) / float2(size);
+    float r = bottomR + uv.y * (topR - bottomR);
     float cosTheta = GetUnitRange(uv.x);
-    float3 sunRay = float3(sqrt(1 - cosTheta * cosTheta), cosTheta, 0);
+    float3 sunRay = float3(sqrt(max(0.0, 1.0 - cosTheta * cosTheta)), cosTheta, 0);
+    float3 pos = float3(0, r, 0);
+    float r2 = r * r;
 
-    float3 l2Scattering = 0.0f;
-    float3 ms = 0.0f;
-    const float phaseL2 = 1 / (4 * PI_);
+    uint rayIndex0 = gi;
+    uint rayIndex1 = gi + 32;
 
-    for (int rayIndex = 0; rayIndex < MULTI_SCATTERING_RAYS; ++rayIndex)
+    float3 ray0 = FibonacciSphereDir(rayIndex0, MULTI_SCATTERING_RAYS);
+    float3 ray1 = FibonacciSphereDir(rayIndex1, MULTI_SCATTERING_RAYS);
+
+    float r_mu0 = ray0.y;
+    bool intersects0 = RayIntersectsGround(params, r, r_mu0);
+    float dist0 = intersects0
+        ? DistanceToBottomAtmosphereBoundary(bottomR, r, r_mu0)
+        : DistanceToTopAtmosphereBoundary(topR, r, r_mu0);
+    float dx0 = dist0 / MULTI_SCATTERING_STEPS;
+
+    float3 opticalDepth0 = 0;
+    float3 finalTrans0 = 1;
+    float3 rayL2_0 = 0;
+    float3 rayMS_0 = 0;
+
+    [loop]
+    for (int i = 0; i < MULTI_SCATTERING_STEPS; ++i)
     {
-        float3 pos = float3(0, r, 0);
-        float3 ray = FibonacciSphereDir(rayIndex, MULTI_SCATTERING_RAYS);
-        float r_mu = ray.y;
-        bool intersects = RayIntersectsGround(skyAtmosphereParameters, r, r_mu);
-        float distance = intersects
-                             ? DistanceToBottomAtmosphereBoundary(GetAtmosphereBottom(skyAtmosphereParameters), r, r_mu)
-                             : DistanceToTopAtmosphereBoundary(GetAtmosphereTop(skyAtmosphereParameters), r, r_mu);
-        float dx = distance / MULTI_SCATTERING_STEPS;
+        float d_i = (i + 0.5) * dx0;
+        float3 pos_i = pos + d_i * ray0;
 
-        float3 opticalDepth = float3(0, 0, 0);
-        float3 prevExtinction = float3(0, 0, 0);
-        float3 finalTransmittance = float3(1, 1, 1);
+        float r_i_sq = dot(pos_i, pos_i);
+        float inv_r_i = rsqrt(r_i_sq);
+        float r_i = r_i_sq * inv_r_i;
+        float h_i = max(0.0, r_i - bottomR);
+        float sun_mu_i = dot(sunRay, pos_i) * inv_r_i;
 
-        for (int i = 0; i <= MULTI_SCATTERING_STEPS; ++i)
-        {
-            float d_i = i * dx;
-            float3 pos_i = pos + d_i * ray;
-            float r_i = length(pos_i);
-            float mu_i = dot(ray, pos_i) / r_i;
-            float sun_mu_i = dot(sunRay, pos_i) / r_i;
-            float h_i = r_i - GetAtmosphereBottom(skyAtmosphereParameters);
+        float rayleighDensity = exp2(-h_i * scaleR * 1.442695);
+        float mieDensity = exp2(-h_i * scaleM * 1.442695);
+        float ozoneDensity = max(0.0, 1.0 - abs(h_i - ozoneCenter) * invOzoneHalfWidth);
 
-            float3 rayleighScattering = GetRayleighIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.rayleighScattering.xyz;
-            float3 mieScattering = GetMieIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.mieScatteringPacked.xyz;
-            float3 mieAbsorption = GetMieIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.mieAbsorption.xyz;
-            float3 ozoneAbsorption = GetOzoneIntensity(skyAtmosphereParameters, h_i) * skyAtmosphereParameters.ozoneAbsorption.xyz;
+        float3 rayleighScat = rayleighDensity * rayleighExtCoeff;
+        float3 mieScat = mieDensity * mieScatCoeff;
+        float3 scattering = rayleighScat + mieScat;
+        float3 extinction = rayleighScat + mieDensity * mieExtCoeff
+                          + ozoneDensity * ozoneAbsCoeff;
 
-            float3 currentExtinction = rayleighScattering + mieScattering + mieAbsorption + ozoneAbsorption;
+        opticalDepth0 += extinction * dx0;
+        float3 transmittance = exp2(-opticalDepth0 * 1.442695);
+        finalTrans0 = transmittance;
 
-            if (i > 0)
-            {
-                opticalDepth += (prevExtinction + currentExtinction) * 0.5f * dx;
-            }
-            prevExtinction = currentExtinction;
+        float3 sunTrans = GetTransmittanceToTopBoundaryFast(
+            params, r_i, sun_mu_i, transmittanceW, transmittanceH);
 
-            float3 transmittance = exp(-opticalDepth);
+        float sinThetaH = saturate(bottomR * inv_r_i);
+        float cosThetaH = -sqrt(max(0.0, 1.0 - sinThetaH * sinThetaH));
+        float edge0 = cosThetaH - sinThetaH * sunAngularRadius;
+        float edge1 = cosThetaH + sinThetaH * sunAngularRadius;
+        float visibility = smoothstep(edge0, edge1, sun_mu_i);
 
-            if (i == MULTI_SCATTERING_STEPS)
-            {
-                finalTransmittance = transmittance;
-            }
-
-            float3 sunPower = GetTransmittanceToTopBoundary(skyAtmosphereParameters, r_i, sun_mu_i);
-            float visibility = GetSunVisibility(skyAtmosphereParameters, r_i, sun_mu_i);
-
-            float weight = i == 0 || i == MULTI_SCATTERING_STEPS ? 0.5 : 1;
-
-            l2Scattering += transmittance * sunPower * visibility * (rayleighScattering + mieScattering) * phaseL2 * weight * dx;
-            ms += transmittance * (rayleighScattering + mieScattering) * weight * dx;
-        }
-
-        if (intersects)
-        {
-            float3 hitPos = pos + ray * distance;
-            float hitR = GetAtmosphereBottom(skyAtmosphereParameters);
-            float nDl = saturate(dot(sunRay, hitPos) / hitR);
-            float3 transmittanceToSun = GetTransmittanceToTopBoundary(skyAtmosphereParameters, hitR, nDl);
-            float visibility = GetSunVisibility(skyAtmosphereParameters, hitR, nDl);
-
-            float3 transmittance = finalTransmittance;
-            float3 albedo = GetGroundAlbedo(skyAtmosphereParameters);
-
-            l2Scattering += albedo * transmittanceToSun * visibility * nDl * transmittance / PI_;
-        }
+        float3 stepScatter = transmittance * scattering * dx0;
+        rayL2_0 += stepScatter * sunTrans * visibility * phaseL2;
+        rayMS_0 += stepScatter;
     }
-    l2Scattering *= phaseL2 * 4 * PI_ / MULTI_SCATTERING_RAYS;
-    ms *= phaseL2 * 4 * PI_ / MULTI_SCATTERING_RAYS;
-    float3 fMS = 1 / (1 - ms);
-    float3 result = l2Scattering * fMS;
-    _MultiScatteringLutUAV[id.xy] = float4(result, 1.0f);
+
+    if (intersects0)
+    {
+        float3 hitPos = pos + ray0 * dist0;
+        float nDl = saturate(dot(sunRay, hitPos) / bottomR);
+        float3 groundSunTrans = GetTransmittanceToTopBoundaryFast(
+            params, bottomR, nDl, transmittanceW, transmittanceH);
+        float vis_g = smoothstep(-sunAngularRadius, sunAngularRadius, nDl);
+        rayL2_0 += groundAlbedo * groundSunTrans * vis_g * nDl * finalTrans0 / PI_;
+    }
+
+    float r_mu1 = ray1.y;
+    bool intersects1 = RayIntersectsGround(params, r, r_mu1);
+    float dist1 = intersects1
+        ? DistanceToBottomAtmosphereBoundary(bottomR, r, r_mu1)
+        : DistanceToTopAtmosphereBoundary(topR, r, r_mu1);
+    float dx1 = dist1 / MULTI_SCATTERING_STEPS;
+
+    float3 opticalDepth1 = 0;
+    float3 finalTrans1 = 1;
+    float3 rayL2_1 = 0;
+    float3 rayMS_1 = 0;
+
+    [loop]
+    for (int j = 0; j < MULTI_SCATTERING_STEPS; ++j)
+    {
+        float d_j = (j + 0.5) * dx1;
+        float3 pos_j = pos + d_j * ray1;
+
+        float r_j_sq = dot(pos_j, pos_j);
+        float inv_r_j = rsqrt(r_j_sq);
+        float r_j = r_j_sq * inv_r_j;
+        float h_j = max(0.0, r_j - bottomR);
+        float sun_mu_j = dot(sunRay, pos_j) * inv_r_j;
+
+        float rayleighDensity = exp2(-h_j * scaleR * 1.442695);
+        float mieDensity = exp2(-h_j * scaleM * 1.442695);
+        float ozoneDensity = max(0.0, 1.0 - abs(h_j - ozoneCenter) * invOzoneHalfWidth);
+
+        float3 rayleighScat = rayleighDensity * rayleighExtCoeff;
+        float3 mieScat = mieDensity * mieScatCoeff;
+        float3 scattering = rayleighScat + mieScat;
+        float3 extinction = rayleighScat + mieDensity * mieExtCoeff
+                          + ozoneDensity * ozoneAbsCoeff;
+
+        opticalDepth1 += extinction * dx1;
+        float3 transmittance = exp2(-opticalDepth1 * 1.442695);
+        finalTrans1 = transmittance;
+
+        float3 sunTrans = GetTransmittanceToTopBoundaryFast(
+            params, r_j, sun_mu_j, transmittanceW, transmittanceH);
+
+        float sinThetaH = saturate(bottomR * inv_r_j);
+        float cosThetaH = -sqrt(max(0.0, 1.0 - sinThetaH * sinThetaH));
+        float edge0 = cosThetaH - sinThetaH * sunAngularRadius;
+        float edge1 = cosThetaH + sinThetaH * sunAngularRadius;
+        float visibility = smoothstep(edge0, edge1, sun_mu_j);
+
+        float3 stepScatter = transmittance * scattering * dx1;
+        rayL2_1 += stepScatter * sunTrans * visibility * phaseL2;
+        rayMS_1 += stepScatter;
+    }
+
+    if (intersects1)
+    {
+        float3 hitPos = pos + ray1 * dist1;
+        float nDl = saturate(dot(sunRay, hitPos) / bottomR);
+        float3 groundSunTrans = GetTransmittanceToTopBoundaryFast(
+            params, bottomR, nDl, transmittanceW, transmittanceH);
+        float vis_g = smoothstep(-sunAngularRadius, sunAngularRadius, nDl);
+        rayL2_1 += groundAlbedo * groundSunTrans * vis_g * nDl * finalTrans1 / PI_;
+    }
+
+    float3 combinedL2 = rayL2_0 + rayL2_1;
+    float3 combinedMS = rayMS_0 + rayMS_1;
+
+    float3 totalL2 = WaveActiveSum(combinedL2);
+    float3 totalMS = WaveActiveSum(combinedMS);
+
+    if (WaveGetLaneIndex() == 0)
+    {
+        float factor = phaseL2 * 4.0 * PI_ / MULTI_SCATTERING_RAYS;
+        totalL2 *= factor;
+        totalMS *= factor;
+        float3 result = totalL2 / max(1.0 - totalMS, 0.00001);
+        _MultiScatteringLutUAV[pixelId] = float4(result, 1.0);
+    }
 }
 [numthreads(8, 8, 1)]
 void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
@@ -264,6 +374,9 @@ void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
     float3 opticalDepth = float3(0, 0, 0);
     float3 prevExtinction = float3(0, 0, 0);
 
+    uint transmittanceW, transmittanceH;
+    _TransmittanceLut.GetDimensions(transmittanceW, transmittanceH);
+
     for (int i = 0; i <= SKY_VIEW_STEPS; ++i)
     {
         float3 pos_i = pos + ray * dx * i;
@@ -286,7 +399,8 @@ void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
 
         float3 transmittance_i = exp(-opticalDepth);
 
-        float3 transmittanceToSun_i = GetTransmittanceToTopBoundary(skyAtmosphereParameters, r_i, sun_mu_i);
+        float3 transmittanceToSun_i = GetTransmittanceToTopBoundaryFast(
+    skyAtmosphereParameters, r_i, sun_mu_i, transmittanceW, transmittanceH);
         float visibility = GetSunVisibility(skyAtmosphereParameters, r_i, sun_mu_i);
 
         float3 singleScattering_i = (rayleighScattering * phaseRayleigh + mieScattering * phaseMie) * transmittanceToSun_i;
@@ -303,7 +417,7 @@ void kComputeSkyViewLut(uint3 id : SV_DispatchThreadID)
 float4x4 _InverseViewProjMatrix;
 float4 _CameraPosition;
 
-[numthreads(8, 8, 8)]
+[numthreads(8, 8, 4)]
 void kComputeAerialPerspectiveLut(uint3 id : SV_DispatchThreadID)
 {
     uint3 size;
@@ -334,6 +448,9 @@ void kComputeAerialPerspectiveLut(uint3 id : SV_DispatchThreadID)
     float3 opticalDepth = float3(0, 0, 0);
     float3 prevExtinction = float3(0, 0, 0);
 
+    uint transmittanceW, transmittanceH;
+    _TransmittanceLut.GetDimensions(transmittanceW, transmittanceH);
+
     for (int i = 0; i <= AERIAL_PERSPECTIVE_STEPS; ++i)
     {
         float3 pos_i = pos + ray * dx * i;
@@ -356,7 +473,8 @@ void kComputeAerialPerspectiveLut(uint3 id : SV_DispatchThreadID)
 
         float3 transmittance_i = exp(-opticalDepth);
 
-        float3 transmittanceToSun_i = GetTransmittanceToTopBoundary(skyAtmosphereParameters, r_i, sun_mu_i);
+        float3 transmittanceToSun_i = GetTransmittanceToTopBoundaryFast(
+   skyAtmosphereParameters, r_i, sun_mu_i, transmittanceW, transmittanceH);
         float visibility = GetSunVisibility(skyAtmosphereParameters, r_i, sun_mu_i);
 
         float3 singleScattering_i = (rayleighScattering * phaseRayleigh + mieScattering * phaseMie) * transmittanceToSun_i;
